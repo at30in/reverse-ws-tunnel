@@ -1,62 +1,41 @@
 require('dotenv').config();
 const WebSocket = require('ws');
 const net = require('net');
-const Buffer = require('buffer').Buffer;
+const { Buffer } = require('buffer');
 const { v4: uuidv4 } = require('uuid');
 const httpProxy = require('http-proxy');
 const http = require('http');
 
-const RECONNECT_INTERVAL = 1000 * 5;
+const RECONNECT_INTERVAL = 5000;
+const TUNNEL_PORT = 1237;
 
-// Tipo di messaggio (1 byte)
 const MESSAGE_TYPE_CONFIG = 0x01;
 const MESSAGE_TYPE_DATA = 0x02;
 
-const TUNNEL_ID = process.env.TUNNEL_ID;
-const WS_URL = process.env.WS_URL;
-const TARGET_URL = process.env.TARGET_URL;
-const TUNNEL_ENTRY_URL = process.env.TUNNEL_ENTRY_URL;
-const TUNNEL_ENTRY_PORT = process.env.TUNNEL_ENTRY_PORT;
-const JWT_TOKEN = process.env.JWT_TOKEN;
-const tunnelPort = 1237;
+const { TUNNEL_ID, WS_URL, TARGET_URL, TUNNEL_ENTRY_URL, TUNNEL_ENTRY_PORT, JWT_TOKEN } = process.env;
 
-// Opzioni per la connessione WebSocket
-const options = {
-  headers: {
-    Authorization: `Bearer ${JWT_TOKEN}`,
-    'x-websocket-tunnel-port': tunnelPort,
-  },
-};
 const clients = {};
 
-// ----------- HTTP Proxy
-function httpProxyServer() {
-  // Crea un proxy server
+/**
+ * Starts a transparent HTTP and WebSocket proxy server that forwards to TARGET_URL.
+ * @returns {number} - The port the proxy server is listening on.
+ */
+function startHttpProxyServer() {
   const proxy = httpProxy.createProxyServer({});
-
-  // Crea un server HTTP
   const server = http.createServer((req, res) => {
     console.log(`Proxying request: ${req.method} ${req.url}`);
 
-    console.log(TARGET_URL);
-
     if (!TARGET_URL) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
-      return res.end('Missing "x-target-url" header');
+      return res.end('Missing TARGET_URL');
     }
 
-    proxy.on('proxyReq', (proxyReq, req, res, options) => {
-      console.log('ProxyReq Host header:', proxyReq.getHeader('host'));
-    });
-
-    // Inoltra la richiesta
-    proxy.web(req, res, { target: TARGET_URL, changeOrigin: true, secure: true }, (e) => {
-      console.error('Proxy error:', e);
+    proxy.web(req, res, { target: TARGET_URL, changeOrigin: true, secure: true }, (err) => {
+      console.error('Proxy error:', err);
       if (!res.headersSent) {
         res.writeHead(502);
         res.end('Bad gateway');
       } else {
-        // Headers già inviati, chiudi la risposta in modo "pulito"
         res.end();
       }
     });
@@ -67,7 +46,6 @@ function httpProxyServer() {
     proxy.ws(req, socket, head, { target: TARGET_URL, changeOrigin: false, secure: false });
   });
 
-  // WebSocket error
   proxy.on('error', (err, req, res) => {
     console.error('Proxy error:', err);
     if (res && !res.headersSent) {
@@ -76,192 +54,159 @@ function httpProxyServer() {
     }
   });
 
-  // Avvia il server su una porta qualsiasi
-  // server.listen(8080, () => {
   server.listen(0, () => {
-    console.log(`Transparent HTTP proxy listening on port ${server.address().port}`);
+    console.log(`HTTP proxy server started on port ${server.address().port}`);
   });
 
   return server.address().port;
 }
 
-const TARGET_PORT = httpProxyServer();
+/**
+ * Validates required environment variables.
+ * Throws an error if any variable is invalid.
+ */
+function validateEnvVariables() {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function validateEnvVaribles() {
-  const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-  if (!uuidV4Regex.test(TUNNEL_ID)) {
-    throw new Error('Invalid UUID format: TUNNEL_ID must be a valid UUIDv4.');
+  if (!uuidRegex.test(TUNNEL_ID)) {
+    throw new Error('TUNNEL_ID must be a valid UUIDv4.');
   }
 
-  try {
-    const parsedUrl = new URL(WS_URL);
-
-    if (parsedUrl.protocol !== 'ws:' && parsedUrl.protocol !== 'wss:') {
-      throw new Error();
-    }
-
-    // console.log('WebSocket URL is valid:', WS_URL);
-  } catch (err) {
-    throw new Error('Invalid WebSocket URL: WS_URL must be a valid ws:// or wss:// URL.');
+  const wsUrl = new URL(WS_URL);
+  if (!['ws:', 'wss:'].includes(wsUrl.protocol)) {
+    throw new Error('WS_URL must be a valid WebSocket URL (ws:// or wss://)');
   }
 
-  try {
-    const parsedUrl = new URL(TARGET_URL);
-
-    console.log(parsedUrl.href);
-
-    // console.log('Valid endpoint URL:', TARGET_URL);
-  } catch (err) {
-    throw new Error('Invalid URL: TARGET_URL must be a valid URL.');
-  }
+  new URL(TARGET_URL); // Throws if invalid
 }
-validateEnvVaribles();
 
+// Initialization
+validateEnvVariables();
+const TARGET_PORT = startHttpProxyServer();
+
+/**
+ * Connects to the WebSocket tunnel server and handles incoming/outgoing messages.
+ */
 function connectWebSocket() {
-  // Crea una connessione al server WebSocket
-  const ws = new WebSocket(WS_URL, options);
+  const ws = new WebSocket(WS_URL, {
+    headers: {
+      Authorization: `Bearer ${JWT_TOKEN}`,
+      'x-websocket-tunnel-port': TUNNEL_PORT,
+    },
+  });
 
-  setInterval(() => {
-    console.log('-----[Clients]----');
-    console.log(Object.keys(clients));
-    console.log('-----[/Clients]----');
-  }, 5000);
-
-  // Quando la connessione è aperta, invia un messaggio al server
   ws.on('open', () => {
-    console.log('Connected to the WebSocket server');
+    console.log('Connected to WebSocket tunnel server');
 
-    // UUID
-    const uuid = uuidv4(); // es: '123e4567-e89b-12d3-a456-426614174000'
-
-    // Payload JSON
-    const payloadObject = {
+    const uuid = uuidv4();
+    const payload = {
       TARGET_URL,
       TARGET_PORT,
       TUNNEL_ENTRY_URL,
       TUNNEL_ENTRY_PORT,
       environment: 'production',
       agentVersion: '1.0.0',
-      // TUNNEL_ID,
       additionalInfo: {
         company: 'Acme Corp',
         location: 'Data Center 1',
       },
     };
 
-    const uuidTunnelBuffer = Buffer.from(TUNNEL_ID);
-    const uuidBuffer = Buffer.from(uuid);
-    const typeBuffer = Buffer.from([MESSAGE_TYPE_CONFIG]);
-    const payloadBuffer = Buffer.from(JSON.stringify(payloadObject), 'utf8');
-
-    const totalLength = uuidTunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
-    const lengthBuffer = Buffer.alloc(4);
-    lengthBuffer.writeUInt32BE(totalLength);
-
-    const messageBuffer = Buffer.concat([lengthBuffer, uuidTunnelBuffer, uuidBuffer, typeBuffer, payloadBuffer]);
+    const messageBuffer = buildMessageBuffer(TUNNEL_ID, uuid, MESSAGE_TYPE_CONFIG, JSON.stringify(payload));
     ws.send(messageBuffer);
-
-    console.log('Sent: ', messageBuffer);
+    console.log('Sent config to server');
   });
 
-  // Quando ricevi un messaggio dal server, stampalo
   ws.on('message', async (data) => {
-    console.log('Received from server: ', data);
-
-    const uuid = data.slice(0, 36);
+    const uuid = data.slice(0, 36).toString();
     const type = data.readUInt8(36);
-    console.log(`Received from server type message ${type}`);
-    data = data.slice(37);
+    const payload = data.slice(37);
 
-    clients[uuid] = clientTCP(ws, uuid);
+    if (type === MESSAGE_TYPE_DATA) {
+      if (payload.toString() === 'CLOSE') {
+        clients[uuid]?.end();
+        return;
+      }
 
-    // client = clientTCP(client, ws);
-
-    if (data == 'CLOSE') {
-      clients[uuid].end();
-      // clients[uuid] = clientTCP(ws, uuid);
-      return;
-    }
-
-    if (!clients[uuid].write(data)) {
-      clients[uuid].once('drain', () => {
-        console.log(`Drained, ready to send more data for ${uuid}`);
-      });
-    }
-    try {
-    } catch (error) {
-      console.log('------ERR-----');
-      console.log(error);
-      console.log('------/ERR-----');
+      const client = clients[uuid] || createClientTCP(ws, uuid);
+      if (!client.write(payload)) {
+        client.once('drain', () => console.log(`Drain complete for ${uuid}`));
+      }
     }
   });
 
-  // Gestione degli errori di connessione
-  ws.on('error', (error) => {
-    console.error('Error occurred: ', error);
+  ws.on('error', (err) => {
+    console.error('WebSocket error:', err);
   });
 
-  // Quando la connessione è chiusa, stampa un messaggio
   ws.on('close', () => {
-    console.log('Disconnected from the WebSocket server');
-    // Chiudi tutte le connessioni TCP aperte
+    console.log('WebSocket disconnected. Cleaning up.');
     for (const uuid in clients) {
       try {
         clients[uuid].end();
-        clients[uuid].destroy(); // extra safe
+        clients[uuid].destroy();
         delete clients[uuid];
-      } catch (e) {
-        console.error(`Error closing client ${uuid}:`, e);
+      } catch (err) {
+        console.error(`Error closing TCP client ${uuid}:`, err);
       }
     }
     setTimeout(connectWebSocket, RECONNECT_INTERVAL);
   });
+
+  setInterval(() => {
+    console.log('[Active Clients]', Object.keys(clients));
+  }, 5000);
 }
 
-connectWebSocket();
+/**
+ * Creates a TCP client connection to the local target service.
+ * @param {WebSocket} ws - Active WebSocket connection to the tunnel server
+ * @param {string} uuid - Unique identifier for this tunnel session
+ * @returns {net.Socket} - The TCP socket
+ */
+function createClientTCP(ws, uuid) {
+  const client = net.createConnection(TARGET_PORT, new URL(TARGET_URL).hostname);
+  clients[uuid] = client;
 
-function clientTCP(ws, uuid) {
-  if (clients[uuid] && clients[uuid].writable && clients[uuid].readable) {
-    console.log('Client esiste e non è chiuso');
-    return clients[uuid];
-  }
-  if (clients[uuid]) {
-    delete clients[uuid];
-  }
-
-  clients[uuid] = net.createConnection(TARGET_PORT, new URL(TARGET_URL).hostname);
-  let client = clients[uuid];
-
-  // Ricevi i dati dalla risposta del server
   client.on('data', (data) => {
-    console.log('DATA FROM SERVER');
-    console.log(data);
-    console.log('////////');
-
-    const uuidTunnelBuffer = Buffer.from(TUNNEL_ID);
-    const uuidBuffer = Buffer.from(uuid);
-    const typeBuffer = Buffer.from([MESSAGE_TYPE_DATA]);
-    const payloadBuffer = data;
-
-    const totalLength = uuidTunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
-    const lengthBuffer = Buffer.alloc(4);
-    lengthBuffer.writeUInt32BE(totalLength);
-
-    ws.send(Buffer.concat([lengthBuffer, uuidTunnelBuffer, uuidBuffer, typeBuffer, payloadBuffer]));
+    const message = buildMessageBuffer(TUNNEL_ID, uuid, MESSAGE_TYPE_DATA, data);
+    ws.send(message);
   });
 
-  client.on('error', (error) => {
-    console.log(error);
-    client.destroy(); // distrugge anche in caso di errore
+  client.on('error', (err) => {
+    console.error(`TCP error for ${uuid}:`, err);
+    client.destroy();
     delete clients[uuid];
   });
 
-  // Quando la connessione si chiude
   client.on('end', () => {
-    console.log('Connection closed');
+    console.log(`TCP connection closed for ${uuid}`);
     delete clients[uuid];
   });
 
   return client;
 }
+
+/**
+ * Builds a binary message buffer to send through the WebSocket tunnel.
+ * @param {string} tunnelId - Global tunnel ID
+ * @param {string} uuid - Per-connection UUID
+ * @param {number} type - Message type code
+ * @param {string|Buffer} payload - The payload data
+ * @returns {Buffer} - The full message buffer
+ */
+function buildMessageBuffer(tunnelId, uuid, type, payload) {
+  const uuidTunnelBuffer = Buffer.from(tunnelId);
+  const uuidBuffer = Buffer.from(uuid);
+  const typeBuffer = Buffer.from([type]);
+  const payloadBuffer = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
+
+  const totalLength = uuidTunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
+  const lengthBuffer = Buffer.alloc(4);
+  lengthBuffer.writeUInt32BE(totalLength);
+
+  return Buffer.concat([lengthBuffer, uuidTunnelBuffer, uuidBuffer, typeBuffer, payloadBuffer]);
+}
+
+// Start tunnel client
+connectWebSocket();
