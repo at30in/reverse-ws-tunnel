@@ -85,6 +85,7 @@ function WSTunnelServer(options) {
 }
 
 function webSocketServer(options) {
+  let tunnelId = null;
   try {
     state.webSocketServer = new WebSocket.Server({ port: options.port });
   } catch (error) {
@@ -97,24 +98,7 @@ function webSocketServer(options) {
   });
 
   state.webSocketServer.on('connection', (ws) => {
-    // if (instances[options.id].websocketServer) {
-    //   console.log('WebSocket tunnel is already active');
-    //   ws.close();
-    //   return;
-    // }
-
-    // const tunnelId = uuidv4();
-    // const tunnelId = '1cf2755f-c151-4281-b3f0-55c399035f89';
-    // state.websocketTunnels[tunnelId] = { ws };
-    // state.websocketTunnels[tunnelId].tcpConnections = {};
-    // state.websocketTunnels[tunnelId].httpConnections = {};
     console.log(`WebSocket connetion established`);
-    // console.log(`WebSocket tunnel [${tunnelId}] established`);
-
-    // instances[options.id].websocketServer = ws;
-
-    // Invia un messaggio di benvenuto al client appena connesso
-    // ws.send('Ciao dal server WebSocket!');
 
     const interval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -148,38 +132,14 @@ function webSocketServer(options) {
         incompleteBuffer = incompleteBuffer.slice(4 + messageLength);
 
         // Ora puoi parse-are:
-        const uuidTunnel = messageBuffer.slice(0, 36).toString();
+        tunnelId = messageBuffer.slice(0, 36).toString();
         const uuid = messageBuffer.slice(36, 72).toString();
         const type = messageBuffer.readUInt8(72);
         const payload = messageBuffer.slice(73);
 
-        handleParsedMessage(ws, uuidTunnel, uuid, type, payload);
+        handleParsedMessage(ws, tunnelId, uuid, type, payload);
       }
     });
-
-    // Gestiamo i messaggi ricevuti dal client
-    // ws.on('message', (data) => {
-    //   const uuid = data.slice(0, 36);
-    //   const type = data.readUInt8(36);
-    //   if (type === MESSAGE_TYPE_CONFIG) {
-    //     console.log('Messaggio di configurazione');
-    //     data = data.slice(37);
-    //     data = JSON.parse(data);
-    //     // TCPServer({ ...TCPOptions, ...{ tunnelId, srcPort: data.srcPort } });
-    //   } else {
-    //     data = data.slice(37);
-    //   }
-
-    //   if (state.websocketTunnels[tunnelId].tcpConnections[uuid] && state.websocketTunnels[tunnelId].tcpConnections[uuid].socket) {
-    //     state.websocketTunnels[tunnelId].tcpConnections[uuid].socket.write(data);
-    //   }
-    //   console.log(type);
-    //   console.log(`Messaggio ricevuto dal client:`);
-    //   console.log(data.toString('utf8'));
-    //   // console.log(`Messaggio ricevuto dal client: ${data}`);
-    //   // Rispondiamo al client
-    //   // ws.send(`Hai detto: ${data}`);
-    // });
 
     // Gestiamo la chiusura della connessione
     ws.on('close', () => {
@@ -210,13 +170,6 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload) {
     payload = JSON.parse(payload);
 
     console.log(payload);
-    // TCPOptions = { ...TCPOptions, ...{ tunnelId } };
-    // TCPOptions.tunnelId = tunnelId;
-    // console.log('+++++++++++');
-    // console.log(TCPOptions);
-    // console.log('+++++++++++');
-
-    const tunnelId = payload.uuidTunnel;
     state.websocketTunnels[tunnelId] = { ws };
     state.websocketTunnels[tunnelId].tcpConnections = {};
     state.websocketTunnels[tunnelId].httpConnections = {};
