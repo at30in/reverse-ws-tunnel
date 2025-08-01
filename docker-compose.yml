@@ -1,0 +1,18 @@
+version: '3.3'
+
+services:
+  nodered:
+    image: websocket-tunnel:1.0.0
+    # volumes:
+    #   - ./data:/data
+    ports:
+      - '4443:4443'
+      - '8083:8083'
+    environment:
+      ENVIRONMENT: 'dev'
+      PORT: '4443'
+      SRC_ADDR: 'localhost'
+      SRC_PORT: '8083'
+      DST_ADDR: 'localhost'
+      DST_PORT: '80'
+      NODE_ENV: 'dev'

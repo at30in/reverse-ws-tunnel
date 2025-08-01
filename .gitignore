@@ -1,0 +1,15 @@
+node_modules
+build
+npm-debug.log
+.env
+.DS_Store
+dist/
+src/custom/*
+!src/custom/tsconfig.json
+compiled/*
+.npmrc
+docs/
+coverage/
+.nyc_output
+# stryker temp files
+.stryker-tmp
