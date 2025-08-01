@@ -2,118 +2,266 @@ const WebSocket = require('ws');
 const net = require('net');
 const Buffer = require('buffer').Buffer;
 const tls = require('tls');
-const { Writable } = require('stream');
+const { v4: uuidv4 } = require('uuid');
+const httpProxy = require('http-proxy');
+const http = require('http');
+// const { Writable } = require('stream');
+
+const tunnelPort = 1237;
+const RECONNECT_INTERVAL = 1000 * 5;
+
+// Tipo di messaggio (1 byte)
+const MESSAGE_TYPE_CONFIG = 0x01;
+const MESSAGE_TYPE_DATA = 0x02;
+
+const UUID_TUNNEL = '1cf2755f-c151-4281-b3f0-55c399035f89';
 
 // Indirizzo del server WebSocket a cui ci si vuole connettere
-const serverUrl = 'ws://flows.yousolution.local:80/websocket-tunnel'; // Cambia questo con l'URL del server a cui vuoi connetterti
-// const serverUrl = 'wss://flows.apserial.it/websocket-tunnel'; // Cambia questo con l'URL del server a cui vuoi connetterti
+// const serverUrl = 'ws://quality-engine-alb-875143533.eu-west-1.elb.amazonaws.com:4443'; // Cambia questo con l'URL del server a cui vuoi connetterti
+const serverUrl = 'ws://localhost:4443'; // Cambia questo con l'URL del server a cui vuoi connetterti
+
+const target = 'http://api.yousolution.internal:1880';
+
 // Token di autenticazione (Bearer Token)
-const token = `eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJwcm9kdWNlckxheWVyb25lIiwic3ViIjoiNjU5ZWFmZTk4YjRkODQwMDExMDM4MWYyIiwicm9sZSI6IldlYlNlcnZpY2UiLCJjb21wYW55IjoiNjU5ZWFmZTk4YjRkODQwMDExMDM4MWYxIiwiaWF0IjoxNzA0ODk4NTM3fQ.X320faLFLZYRB-BJepa7j_GO-6kq1Rz_9F6CtpO-I61ZZ7WI_ALADQfD4NBygsIkV1IzsZOAVvQlmB1Nff-5bg`; // Sostituisci con il tuo Bearer Token
+const token = `token-secure-data`; // Sostituisci con il tuo Bearer Token
 
 // Opzioni per la connessione WebSocket
 const options = {
   headers: {
     Authorization: `Bearer ${token}`,
-    'x-websocket-tunnel-port': 1234,
+    'x-websocket-tunnel-port': tunnelPort,
   },
 };
+const clients = {};
 
-// Crea una connessione al server WebSocket
-const ws = new WebSocket(serverUrl, options);
+// ----------- HTTP Proxy
+function httpProxyServer() {
+  // Crea un proxy server
+  const proxy = httpProxy.createProxyServer({});
 
-// Quando la connessione è aperta, invia un messaggio al server
-ws.on('open', () => {
-  console.log('Connected to the WebSocket server');
-  const message = JSON.stringify({ type: 'greeting', message: 'Hello, Server!' });
-  ws.send(message);
-  console.log('Sent: ', message);
-});
+  // Crea un server HTTP
+  const server = http.createServer((req, res) => {
+    console.log(`Proxying request: ${req.method} ${req.url}`);
 
-// Quando ricevi un messaggio dal server, stampalo
-ws.on('message', async (data) => {
-  console.log('Received from server: ', data);
-  console.log('Received Base64 encoded HTTP RAW request:');
+    if (!target) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('Missing "x-target-url" header');
+    }
 
-  // Decodifica la stringa Base64
-  try {
-    // const request = JSON.parse(Buffer.from(data, 'base64').toString('utf-8'));
-    // const rawHttpRequest = Buffer.from(request.httpRequest, 'base64').toString('utf-8');
-    // console.log('Decoded HTTP RAW Request:', request.httpRequest);
-
-    const extractedUUID = data.slice(0, 36);
-    console.log(extractedUUID);
-    const res = await tcpRequest(data.slice(36)); // tolgo dal buffer uuid
-    // console.log('======');
-    // console.log(res.toString('utf-8'));
-    // console.log('======');
-    ws.send(Buffer.concat([extractedUUID, res]));
-  } catch (error) {
-    console.log(error);
-  }
-});
-
-// Gestione degli errori di connessione
-ws.on('error', (error) => {
-  console.error('Error occurred: ', error);
-});
-
-// Quando la connessione è chiusa, stampa un messaggio
-ws.on('close', () => {
-  console.log('Disconnected from the WebSocket server');
-});
-
-function tcpRequest(rawHttpRequest) {
-  return new Promise((resolve, reject) => {
-    const { hostname, port } = extractHostAndPort(rawHttpRequest);
-
-    let responseData = Buffer.alloc(0); // Inizializza un buffer vuoto per accumulare i dati
-
-    console.log(hostname);
-    console.log(port);
-    // Creazione di un socket TCP
-    const client = tls.connect(port, hostname, { servername: hostname }, () => {
-      client.write(rawHttpRequest); // Invia la richiesta HTTP raw
+    proxy.on('proxyReq', (proxyReq, req, res, options) => {
+      console.log('ProxyReq Host header:', proxyReq.getHeader('host'));
     });
 
-    // Ricevi i dati dalla risposta del server
-    client.on('data', (data) => {
-      // console.log('Received response from server:');
-      // console.log(data.toString()); // Converte i dati ricevuti in stringa e li stampa
-      // return resolve(data);
-      responseData = Buffer.concat([responseData, data]); // Accumula i dati ricevuti
+    // Inoltra la richiesta
+    proxy.web(req, res, { target, changeOrigin: true, secure: true }, (e) => {
+      console.error('Proxy error:', e);
+      if (!res.headersSent) {
+        res.writeHead(502);
+        res.end('Bad gateway');
+      } else {
+        // Headers già inviati, chiudi la risposta in modo "pulito"
+        res.end();
+      }
     });
+  });
 
-    // Quando la connessione si chiude
-    client.on('end', () => {
-      console.log('Connection closed');
-      resolve(responseData);
-      // client.destroy()
-    });
+  server.on('upgrade', (req, socket, head) => {
+    console.log(`Proxying WebSocket request: ${req.url}`);
+    proxy.ws(req, socket, head, { target, changeOrigin: false, secure: false });
+  });
 
-    // Gestione degli errori
-    client.on('error', (err) => {
-      reject(err);
-      console.error('Error:', err);
-    });
+  // WebSocket error
+  proxy.on('error', (err, req, res) => {
+    console.error('Proxy error:', err);
+    if (res && !res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Proxy error');
+    }
+  });
+
+  // Avvia il server su una porta qualsiasi
+  // server.listen(8080, () => {
+  server.listen(0, () => {
+    console.log(`Transparent HTTP proxy listening on port ${server.address().port}`);
+  });
+
+  return server.address().port;
+}
+
+const httpProxyServerPort = httpProxyServer();
+
+function connectWebSocket() {
+  // Crea una connessione al server WebSocket
+  const ws = new WebSocket(serverUrl, options);
+
+  setInterval(() => {
+    console.log('-----[Clients]----');
+    console.log(Object.keys(clients));
+    console.log('-----[/Clients]----');
+  }, 5000);
+
+  // Quando la connessione è aperta, invia un messaggio al server
+  ws.on('open', () => {
+    console.log('Connected to the WebSocket server');
+
+    // UUID
+    const uuid = uuidv4(); // es: '123e4567-e89b-12d3-a456-426614174000'
+
+    // Payload JSON
+    const payloadObject = {
+      targetHost: 'localhost',
+      targetPort: httpProxyServerPort,
+      srcPort: '8083',
+      environment: 'production',
+      agentVersion: '1.0.0',
+      uuidTunnel: UUID_TUNNEL,
+      additionalInfo: {
+        company: 'Acme Corp',
+        location: 'Data Center 1',
+      },
+    };
+
+    const uuidTunnelBuffer = Buffer.from(UUID_TUNNEL);
+    const uuidBuffer = Buffer.from(uuid);
+    const typeBuffer = Buffer.from([MESSAGE_TYPE_CONFIG]);
+    const payloadBuffer = Buffer.from(JSON.stringify(payloadObject), 'utf8');
+
+    const totalLength = uuidTunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
+    const lengthBuffer = Buffer.alloc(4);
+    lengthBuffer.writeUInt32BE(totalLength);
+
+    const messageBuffer = Buffer.concat([lengthBuffer, uuidTunnelBuffer, uuidBuffer, typeBuffer, payloadBuffer]);
+    ws.send(messageBuffer);
+
+    // // Costruisci messaggio binario
+    // const messageBuffer = Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_CONFIG]), payloadBuffer]);
+
+    // // ws.send(Buffer.concat([Buffer.from( uuidv4()), data]));
+    // // const message = JSON.stringify({ type: 'greeting', message: 'Hello, Server!' });
+    // ws.send(messageBuffer);
+    console.log('Sent: ', messageBuffer);
+  });
+
+  // Quando ricevi un messaggio dal server, stampalo
+  ws.on('message', async (data) => {
+    console.log('Received from server: ', data);
+
+    const uuid = data.slice(0, 36);
+    const type = data.readUInt8(36);
+    console.log(`Received from server type message ${type}`);
+    data = data.slice(37);
+
+    clients[uuid] = clientTCP(ws, uuid);
+
+    // client = clientTCP(client, ws);
+
+    if (data == 'CLOSE') {
+      clients[uuid].end();
+      // clients[uuid] = clientTCP(ws, uuid);
+      return;
+    }
+
+    if (!clients[uuid].write(data)) {
+      clients[uuid].once('drain', () => {
+        console.log(`Drained, ready to send more data for ${uuid}`);
+      });
+    }
+
+    // clients[uuid].write(data);
+
+    // Decodifica la stringa Base64
+    try {
+      // const request = JSON.parse(Buffer.from(data, 'base64').toString('utf-8'));
+      // const rawHttpRequest = Buffer.from(request.httpRequest, 'base64').toString('utf-8');
+      // console.log('Decoded HTTP RAW Request:', request.httpRequest);
+      // const extractedUUID = data.slice(0, 36);
+      // console.log(extractedUUID);
+      // const res = await incomingRequest(data.slice(36)); // tolgo dal buffer uuid
+      // const res = await incomingRequest(data); // tolgo dal buffer uuid
+      // console.log('======');
+      // console.log(res.toString('utf-8'));
+      // console.log('======');
+      // ws.send(Buffer.concat([extractedUUID, res]));
+    } catch (error) {
+      console.log('------ERR-----');
+      console.log(error);
+      console.log('------/ERR-----');
+    }
+  });
+
+  // Gestione degli errori di connessione
+  ws.on('error', (error) => {
+    console.error('Error occurred: ', error);
+  });
+
+  // Quando la connessione è chiusa, stampa un messaggio
+  ws.on('close', () => {
+    console.log('Disconnected from the WebSocket server');
+    // Chiudi tutte le connessioni TCP aperte
+    for (const uuid in clients) {
+      try {
+        clients[uuid].end();
+        clients[uuid].destroy(); // extra safe
+        delete clients[uuid];
+      } catch (e) {
+        console.error(`Error closing client ${uuid}:`, e);
+      }
+    }
+    setTimeout(connectWebSocket, RECONNECT_INTERVAL);
   });
 }
 
-/**
- * Estrai solo l'host e la porta dalla stringa raw HTTP senza doverla parsare tutta.
- * @param {string} rawHttp - La stringa HTTP raw.
- * @returns {Object} - L'host e la porta.
- */
-function extractHostAndPort(rawHttp) {
-  const hostPattern = /Host:\s*([^\r\n]+)/i; // Regex per trovare la linea Host
-  const rawHttpString = rawHttp.toString('utf-8');
-  const match = rawHttpString.match(hostPattern);
+connectWebSocket();
 
-  if (!match) {
-    throw new Error('Host non trovato nella stringa HTTP raw');
+function clientTCP(ws, uuid) {
+  if (clients[uuid] && clients[uuid].writable && clients[uuid].readable) {
+    console.log('Client esiste e non è chiuso');
+    return clients[uuid];
+  }
+  if (clients[uuid]) {
+    delete clients[uuid];
   }
 
-  const host = match[1];
-  const [hostname, port = 443] = host.split(':'); // Porta di default 443 per HTTPS
+  // client = net.createConnection(1433, 'localhost');
+  // uuid = uuidv4();
+  clients[uuid] = net.createConnection(httpProxyServerPort, 'localhost');
+  let client = clients[uuid];
 
-  return { hostname, port: parseInt(port, 10) };
+  // Ricevi i dati dalla risposta del server
+  client.on('data', (data) => {
+    console.log('DATA FROM SERVER');
+    console.log(data);
+    console.log('////////');
+    // responseData = Buffer.concat([responseData, data]); // Accumula i dati ricevuti
+    // ws.send(Buffer.concat([Buffer.from(uuid), Buffer.from(data)]));
+
+    // Calcola lunghezza totale del payload
+
+    const uuidTunnelBuffer = Buffer.from(UUID_TUNNEL);
+    const uuidBuffer = Buffer.from(uuid);
+    const typeBuffer = Buffer.from([MESSAGE_TYPE_DATA]);
+    const payloadBuffer = data;
+
+    const totalLength = uuidTunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
+    const lengthBuffer = Buffer.alloc(4);
+    lengthBuffer.writeUInt32BE(totalLength);
+
+    ws.send(Buffer.concat([lengthBuffer, uuidTunnelBuffer, uuidBuffer, typeBuffer, payloadBuffer]));
+  });
+
+  client.on('error', (error) => {
+    console.log(error);
+    client.destroy(); // distrugge anche in caso di errore
+    delete clients[uuid];
+  });
+
+  // Quando la connessione si chiude
+  client.on('end', () => {
+    console.log('Connection closed');
+    delete clients[uuid];
+    // client = clientTCP(ws, uuid);
+    // resolve(responseData);
+  });
+
+  return client;
 }
