@@ -10,7 +10,10 @@
     }
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "start:client": "node client/index.js",
+    "start:server": "node server/index.js",
     "docker:build": "cross-conf-env docker image build -f Dockerfile . -t $npm_package_config_dockerRegistry_prod$npm_package_name:$npm_package_version",
     "docker:deploy": "docker-compose up -d",
     "start": "node server6.js"
@@ -27,5 +30,8 @@
     "http-proxy": "^1.18.1",
     "uuid": "^11.1.0",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "jest": "^28.1.3"
   }
 }
