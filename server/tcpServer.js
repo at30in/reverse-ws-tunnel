@@ -10,7 +10,7 @@ const { MESSAGE_TYPE_DATA } = require('./constants');
  * @param {number} port - Port to listen on.
  */
 function startTCPServer(port) {
-  state.tcpServer = net.createServer((socket) => {
+  state[String(port)].tcpServer = net.createServer((socket) => {
     const uuid = uuidv4();
     const uuidBuffer = Buffer.from(uuid);
     let currentTunnelId = null;
@@ -107,11 +107,11 @@ function startTCPServer(port) {
     });
   });
 
-  state.tcpServer.listen(port, () => {
+  state[String(port)].tcpServer.listen(port, () => {
     console.log(`TCP server listening on port ${port}`);
   });
 
-  state.tcpServer.on('error', (err) => {
+  state[String(port)].tcpServer.on('error', (err) => {
     console.error('TCP server error:', err);
   });
 }

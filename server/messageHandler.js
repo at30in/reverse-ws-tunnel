@@ -1,5 +1,6 @@
 const state = require('./state');
 const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA } = require('./constants');
+const { startTCPServer } = require('./tcpServer');
 
 /**
  * Handles a parsed WebSocket message.
@@ -11,16 +12,34 @@ const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA } = require('./constants');
  */
 function handleParsedMessage(ws, tunnelId, uuid, type, payload) {
   if (type === MESSAGE_TYPE_CONFIG) {
-    const config = JSON.parse(payload);
-    console.log('Tunnel config received:', config);
+    try {
+      const config = JSON.parse(payload);
+      console.log('Tunnel config received:', config);
 
-    state.websocketTunnels[tunnelId] = {
-      ws,
-      tcpConnections: {},
-      httpConnections: {},
-    };
+      const { TUNNEL_ENTRY_PORT } = config;
 
-    console.log(`Tunnel [${tunnelId}] established`);
+      if (!TUNNEL_ENTRY_PORT) {
+        throw new Error('Missing tunnel entry port!');
+      }
+
+      console.log(TUNNEL_ENTRY_PORT);
+
+      state.websocketTunnels[tunnelId] = {
+        ws,
+        tcpConnections: {},
+        httpConnections: {},
+      };
+
+      if (!state[String(TUNNEL_ENTRY_PORT)]) {
+        state[String(TUNNEL_ENTRY_PORT)] = {};
+        state[String(TUNNEL_ENTRY_PORT)].tcpServer = startTCPServer(TUNNEL_ENTRY_PORT);
+      }
+
+      console.log(`Tunnel [${tunnelId}] established`);
+    } catch (error) {
+      console.log(error);
+    }
+
     return;
   }
 
