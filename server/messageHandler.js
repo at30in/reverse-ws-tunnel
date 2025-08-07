@@ -10,7 +10,7 @@ const { startTCPServer } = require('./tcpServer');
  * @param {number} type - Message type (config or data).
  * @param {Buffer} payload - Data payload.
  */
-function handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdName) {
+function handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdName, port) {
   if (type === MESSAGE_TYPE_CONFIG) {
     try {
       const config = JSON.parse(payload);
@@ -24,15 +24,17 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdNa
 
       console.log(TUNNEL_ENTRY_PORT);
 
-      state.websocketTunnels[tunnelId] = {
+      console.log(state[port].websocketTunnels);
+
+      state[port].websocketTunnels[tunnelId] = {
         ws,
         tcpConnections: {},
         httpConnections: {},
       };
 
-      if (!state[String(TUNNEL_ENTRY_PORT)]) {
-        state[String(TUNNEL_ENTRY_PORT)] = {};
-        state[String(TUNNEL_ENTRY_PORT)].tcpServer = startTCPServer(TUNNEL_ENTRY_PORT, headerTunnelIdName);
+      if (!state[port][String(TUNNEL_ENTRY_PORT)]) {
+        state[port][String(TUNNEL_ENTRY_PORT)] = {};
+        state[port][String(TUNNEL_ENTRY_PORT)].tcpServer = startTCPServer(TUNNEL_ENTRY_PORT, headerTunnelIdName, port);
       }
 
       console.log(`Tunnel [${tunnelId}] established`);
@@ -43,7 +45,7 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdNa
     return;
   }
 
-  const tunnel = state.websocketTunnels[tunnelId];
+  const tunnel = state[port].websocketTunnels[tunnelId];
   if (tunnel?.tcpConnections?.[uuid]?.socket) {
     tunnel.tcpConnections[uuid].socket.write(payload);
   }

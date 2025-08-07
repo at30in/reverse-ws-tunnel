@@ -9,13 +9,15 @@ const { PING_INTERVAL, MESSAGE_TYPE_CONFIG } = require('./constants');
  * @param {number} port - Port to listen on.
  */
 function startWebSocketServer({ port, host, path, headerTunnelIdName }) {
-  state.webSocketServer = new WebSocket.Server({ port, host, path });
+  state[String(port)] = state[String(port)] || {};
+  state[String(port)].websocketTunnels = state[String(port)].websocketTunnels || {};
+  state[String(port)].webSocketServer = new WebSocket.Server({ port, host, path });
 
-  state.webSocketServer.on('listening', () => {
+  state[String(port)].webSocketServer.on('listening', () => {
     console.log(`WebSocket server listening on port ${port}`);
   });
 
-  state.webSocketServer.on('connection', (ws) => {
+  state[String(port)].webSocketServer.on('connection', (ws) => {
     let tunnelId = null;
     let buffer = Buffer.alloc(0);
 
@@ -39,13 +41,13 @@ function startWebSocketServer({ port, host, path, headerTunnelIdName }) {
         const type = message.readUInt8(72);
         const payload = message.slice(73);
 
-        handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdName);
+        handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdName, String(port));
       }
     });
 
     ws.on('close', () => {
       console.log('WebSocket connection closed');
-      if (tunnelId) delete state.websocketTunnels[tunnelId];
+      if (tunnelId) delete state[String(port)].websocketTunnels[tunnelId];
       clearInterval(interval);
     });
 
@@ -57,7 +59,7 @@ function startWebSocketServer({ port, host, path, headerTunnelIdName }) {
     });
   });
 
-  state.webSocketServer.on('error', (err) => {
+  state[String(port)].webSocketServer.on('error', (err) => {
     console.error('WebSocket server error:', err);
   });
 

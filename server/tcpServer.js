@@ -9,8 +9,8 @@ const { MESSAGE_TYPE_DATA } = require('./constants');
  * Starts the TCP+HTTP+WebSocket-over-TCP server.
  * @param {number} port - Port to listen on.
  */
-function startTCPServer(port, headerTunnelIdName) {
-  state[String(port)].tcpServer = net.createServer((socket) => {
+function startTCPServer(port, headerTunnelIdName, websocketPort) {
+  state[String(websocketPort)][String(port)].tcpServer = net.createServer((socket) => {
     const uuid = uuidv4();
     const uuidBuffer = Buffer.from(uuid);
     let currentTunnelId = null;
@@ -34,7 +34,7 @@ function startTCPServer(port, headerTunnelIdName) {
           currentTunnelId = cookie.parse(headers['cookie'])[headerTunnelIdName];
         }
 
-        const tunnel = state.websocketTunnels[currentTunnelId];
+        const tunnel = state[String(websocketPort)].websocketTunnels[currentTunnelId];
         if (!tunnel?.ws) {
           console.error('Invalid or missing tunnel:', currentTunnelId);
           socket.destroy();
@@ -59,7 +59,7 @@ function startTCPServer(port, headerTunnelIdName) {
       };
 
       parser[HTTPParser.kOnBody] = (chunk, offset, length) => {
-        const tunnel = state.websocketTunnels[currentTunnelId];
+        const tunnel = state[String(websocketPort)].websocketTunnels[currentTunnelId];
         if (tunnel?.ws && !isWebSocket) {
           tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), chunk.slice(offset, offset + length)]));
         }
@@ -75,7 +75,7 @@ function startTCPServer(port, headerTunnelIdName) {
     let currentParser = createParser();
 
     socket.on('data', (chunk) => {
-      const tunnel = state.websocketTunnels[currentTunnelId];
+      const tunnel = state[String(websocketPort)].websocketTunnels[currentTunnelId];
       if (isWebSocket) {
         if (tunnel?.ws) {
           tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), chunk]));
@@ -91,27 +91,27 @@ function startTCPServer(port, headerTunnelIdName) {
     });
 
     socket.on('end', () => {
-      const tunnel = state.websocketTunnels[currentTunnelId];
+      const tunnel = state[String(websocketPort)].websocketTunnels[currentTunnelId];
       if (tunnel?.ws) {
         tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), Buffer.from('CLOSE')]));
       }
     });
 
     socket.on('close', () => {
-      delete state.websocketTunnels[currentTunnelId]?.tcpConnections[uuid];
+      delete state[String(websocketPort)].websocketTunnels[currentTunnelId]?.tcpConnections[uuid];
     });
 
     socket.on('error', (err) => {
       console.error('Socket error:', err);
-      delete state.websocketTunnels[currentTunnelId]?.tcpConnections[uuid];
+      delete state[String(websocketPort)].websocketTunnels[currentTunnelId]?.tcpConnections[uuid];
     });
   });
 
-  state[String(port)].tcpServer.listen(port, () => {
+  state[String(websocketPort)][String(port)].tcpServer.listen(port, () => {
     console.log(`TCP server listening on port ${port}`);
   });
 
-  state[String(port)].tcpServer.on('error', (err) => {
+  state[String(websocketPort)][String(port)].tcpServer.on('error', (err) => {
     console.error('TCP server error:', err);
   });
 }
