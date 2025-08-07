@@ -9,7 +9,7 @@ const { MESSAGE_TYPE_DATA } = require('./constants');
  * Starts the TCP+HTTP+WebSocket-over-TCP server.
  * @param {number} port - Port to listen on.
  */
-function startTCPServer(port) {
+function startTCPServer(port, headerTunnelIdName) {
   state[String(port)].tcpServer = net.createServer((socket) => {
     const uuid = uuidv4();
     const uuidBuffer = Buffer.from(uuid);
@@ -28,10 +28,10 @@ function startTCPServer(port) {
         const methodName = methods[info.method] || 'UNKNOWN';
 
         // Tunnel ID via header or cookie
-        if (headers['tunnel-id']) {
-          currentTunnelId = headers['tunnel-id'];
+        if (headers[headerTunnelIdName]) {
+          currentTunnelId = headers[headerTunnelIdName];
         } else if (headers['cookie']) {
-          currentTunnelId = cookie.parse(headers['cookie'])['tunnel-id'];
+          currentTunnelId = cookie.parse(headers['cookie'])[headerTunnelIdName];
         }
 
         const tunnel = state.websocketTunnels[currentTunnelId];

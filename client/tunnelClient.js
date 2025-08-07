@@ -12,7 +12,6 @@ const clients = {};
  * Starts the WebSocket tunnel client.
  * @param {Object} config - Configuration for tunnel.
  * @param {string} config.wsUrl
- * @param {string} config.jwt
  * @param {string} config.tunnelId
  * @param {string} config.targetUrl
  * @param {number} config.targetPort
@@ -20,14 +19,17 @@ const clients = {};
  * @param {number} config.tunnelEntryPort
  */
 function connectWebSocket(config) {
-  const { wsUrl, jwt, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort } = config;
+  const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers } = config;
+  let ws;
 
-  const ws = new WebSocket(wsUrl, {
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'x-websocket-tunnel-port': targetPort,
-    },
-  });
+  try {
+    let headersParsed = JSON.parse(headers || '{}');
+    ws = new WebSocket(wsUrl, {
+      headers: headersParsed,
+    });
+  } catch (error) {
+    console.error('Malformed headers:', error);
+  }
 
   ws.on('open', () => {
     console.log('Connected to WebSocket server');
