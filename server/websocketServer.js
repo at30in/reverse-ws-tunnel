@@ -8,7 +8,7 @@ const { PING_INTERVAL, MESSAGE_TYPE_CONFIG } = require('./constants');
  * Starts the WebSocket tunnel server.
  * @param {number} port - Port to listen on.
  */
-function startWebSocketServer({ port, host, path, headerTunnelIdName }) {
+function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
   state[String(port)] = state[String(port)] || {};
   state[String(port)].websocketTunnels = state[String(port)].websocketTunnels || {};
   state[String(port)].webSocketServer = new WebSocket.Server({ port, host, path });
@@ -41,7 +41,7 @@ function startWebSocketServer({ port, host, path, headerTunnelIdName }) {
         const type = message.readUInt8(72);
         const payload = message.slice(73);
 
-        handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdName, String(port));
+        handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, String(port));
       }
     });
 

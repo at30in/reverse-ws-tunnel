@@ -10,7 +10,7 @@ const { startTCPServer } = require('./tcpServer');
  * @param {number} type - Message type (config or data).
  * @param {Buffer} payload - Data payload.
  */
-function handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdName, port) {
+function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, port) {
   if (type === MESSAGE_TYPE_CONFIG) {
     try {
       const config = JSON.parse(payload);
@@ -34,7 +34,7 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, headerTunnelIdNa
 
       if (!state[port][String(TUNNEL_ENTRY_PORT)]) {
         state[port][String(TUNNEL_ENTRY_PORT)] = {};
-        state[port][String(TUNNEL_ENTRY_PORT)].tcpServer = startTCPServer(TUNNEL_ENTRY_PORT, headerTunnelIdName, port);
+        state[port][String(TUNNEL_ENTRY_PORT)].tcpServer = startTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port);
       }
 
       console.log(`Tunnel [${tunnelId}] established`);
