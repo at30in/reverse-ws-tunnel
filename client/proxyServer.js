@@ -14,7 +14,7 @@ function startHttpProxyServer(targetUrl) {
       return res.end('Missing TARGET_URL');
     }
 
-    proxy.web(req, res, { target: targetUrl, changeOrigin: true, secure: true }, (err) => {
+    proxy.web(req, res, { target: targetUrl, changeOrigin: true, secure: false }, (err) => {
       console.error('Proxy error:', err);
       if (!res.headersSent) {
         res.writeHead(502);
