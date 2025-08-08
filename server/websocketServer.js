@@ -46,12 +46,12 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
     });
 
     ws.on('close', () => {
-      console.log('WebSocket connection closed');
+      console.log(`WebSocket connection closed tunnel [${tunnelId}]`);
       if (tunnelId) delete state[String(port)].websocketTunnels[tunnelId];
       clearInterval(interval);
     });
 
-    ws.on('pong', () => console.log('Pong received from client'));
+    ws.on('pong', () => console.log(`Pong received from client on tunnel [${tunnelId}]`));
 
     ws.on('error', (err) => {
       console.error('WebSocket error:', err);

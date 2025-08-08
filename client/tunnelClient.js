@@ -7,6 +7,8 @@ const RECONNECT_INTERVAL = 5000;
 const MESSAGE_TYPE_CONFIG = 0x01;
 const MESSAGE_TYPE_DATA = 0x02;
 const clients = {};
+const PING_INTERVAL = 30 * 1000; //30s
+const PONG_WAIT = 5 * 1000; //5s
 
 /**
  * Starts the WebSocket tunnel client.
@@ -21,6 +23,7 @@ const clients = {};
 function connectWebSocket(config) {
   const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers } = config;
   let ws;
+  let pingInterval;
 
   try {
     let headersParsed = JSON.parse(headers || '{}');
@@ -33,6 +36,8 @@ function connectWebSocket(config) {
 
   ws.on('open', () => {
     console.log('Connected to WebSocket server');
+
+    ({ pingInterval } = heartBeat(ws));
 
     const uuid = uuidv4();
     const payload = {
@@ -68,6 +73,8 @@ function connectWebSocket(config) {
 
   ws.on('close', () => {
     console.log('WebSocket disconnected, cleaning up.');
+    clearInterval(pingInterval);
+    // clearTimeout(pongTimeout);
     for (const uuid in clients) {
       clients[uuid].end();
       clients[uuid].destroy();
@@ -79,6 +86,25 @@ function connectWebSocket(config) {
   ws.on('error', (err) => {
     console.error('WebSocket error:', err);
   });
+}
+
+function heartBeat(ws) {
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+
+      const pongTimeout = setTimeout(() => {
+        console.warn('Timeout: no pong received, closing the connection');
+        ws.terminate(); // forza la chiusura della connessione
+      }, PONG_WAIT);
+
+      ws.once('pong', () => {
+        clearTimeout(pongTimeout);
+      });
+    }
+  }, PING_INTERVAL);
+
+  return { pingInterval };
 }
 
 /**
