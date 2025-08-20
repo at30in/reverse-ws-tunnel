@@ -6,7 +6,7 @@ const httpProxy = require('http-proxy');
  * @param {string} targetUrl - The URL to forward requests to.
  * @returns {number} - The port the proxy is listening on.
  */
-function startHttpProxyServer(targetUrl) {
+function startHttpProxyServer(targetUrl, allowInsecureCerts = false) {
   const proxy = httpProxy.createProxyServer({});
   const server = http.createServer((req, res) => {
     if (!targetUrl) {
@@ -14,7 +14,7 @@ function startHttpProxyServer(targetUrl) {
       return res.end('Missing TARGET_URL');
     }
 
-    proxy.web(req, res, { target: targetUrl, changeOrigin: true, secure: false }, (err) => {
+    proxy.web(req, res, { target: targetUrl, changeOrigin: true, secure: !allowInsecureCerts }, (err) => {
       console.error('Proxy error:', err);
       if (!res.headersSent) {
         res.writeHead(502);
@@ -26,7 +26,7 @@ function startHttpProxyServer(targetUrl) {
   });
 
   server.on('upgrade', (req, socket, head) => {
-    proxy.ws(req, socket, head, { target: targetUrl, changeOrigin: false, secure: false });
+    proxy.ws(req, socket, head, { target: targetUrl, changeOrigin: false, secure: !allowInsecureCerts });
   });
 
   proxy.on('error', (err, req, res) => {

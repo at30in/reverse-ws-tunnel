@@ -3,8 +3,9 @@ const { startHttpProxyServer } = require('./proxyServer');
 const { connectWebSocket } = require('./tunnelClient');
 
 const { TUNNEL_ID, WS_URL, TARGET_URL, TUNNEL_ENTRY_URL, TUNNEL_ENTRY_PORT, HEADERS } = process.env;
+const ALLOW_INSICURE_CERTS = process.env.ALLOW_INSICURE_CERTS === 'true';
 
-const TARGET_PORT = startHttpProxyServer(TARGET_URL);
+const TARGET_PORT = startHttpProxyServer(TARGET_URL, ALLOW_INSICURE_CERTS);
 
 connectWebSocket({
   wsUrl: WS_URL,
