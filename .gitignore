@@ -3,7 +3,8 @@ build
 npm-debug.log
 .env
 .DS_Store
-dist/
+dist/*
+!dist/.gitkeep
 src/custom/*
 !src/custom/tsconfig.json
 compiled/*

@@ -12,8 +12,7 @@
   "scripts": {
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "start:client": "node client/index.js",
-    "start:server": "node server/index.js",
+    "pack": "cd dist && npm pack ..",
     "docker:build": "cross-conf-env docker image build -f Dockerfile . -t $npm_package_config_dockerRegistry_prod$npm_package_name:$npm_package_version",
     "docker:deploy": "docker-compose up -d",
     "example:server": "node examples/server-example.js",
