@@ -1,6 +1,7 @@
 const state = require('./state');
 const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA } = require('./constants');
 const { startTCPServer } = require('./tcpServer');
+const { logger } = require('../utils/logger');
 
 /**
  * Handles a parsed WebSocket message.
@@ -9,22 +10,35 @@ const { startTCPServer } = require('./tcpServer');
  * @param {string} uuid - Unique identifier for TCP connection.
  * @param {number} type - Message type (config or data).
  * @param {Buffer} payload - Data payload.
+ * @param {string} tunnelIdHeaderName - Header name to identify the tunnel.
+ * @param {number} port - Listening port for state grouping.
  */
 function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, port) {
+  logger.trace(`handleParsedMessage called. type=${type}, tunnelId=${tunnelId}, uuid=${uuid}`);
+
   if (type === MESSAGE_TYPE_CONFIG) {
     try {
       const config = JSON.parse(payload);
-      console.log('Tunnel config received:', config);
+      logger.debug(`Received tunnel config for tunnelId=${tunnelId}: ${JSON.stringify(config)}`);
 
       const { TUNNEL_ENTRY_PORT } = config;
 
       if (!TUNNEL_ENTRY_PORT) {
+        logger.warn(`Tunnel config missing TUNNEL_ENTRY_PORT for tunnelId=${tunnelId}`);
         throw new Error('Missing tunnel entry port!');
       }
 
-      console.log(TUNNEL_ENTRY_PORT);
+      logger.debug(`Registering WebSocket tunnel [${tunnelId}] on port ${port}`);
 
-      console.log(state[port].websocketTunnels);
+      if (!state[port]) {
+        state[port] = {
+          websocketTunnels: {},
+        };
+      }
+
+      if (!state[port].websocketTunnels) {
+        state[port].websocketTunnels = {};
+      }
 
       state[port].websocketTunnels[tunnelId] = {
         ws,
@@ -32,22 +46,32 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
         httpConnections: {},
       };
 
-      if (!state[port][String(TUNNEL_ENTRY_PORT)]) {
-        state[port][String(TUNNEL_ENTRY_PORT)] = {};
-        state[port][String(TUNNEL_ENTRY_PORT)].tcpServer = startTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port);
+      const portKey = String(TUNNEL_ENTRY_PORT);
+      if (!state[port][portKey]) {
+        logger.info(`Starting new TCP server on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`);
+        state[port][portKey] = {
+          tcpServer: startTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port),
+        };
+      } else {
+        logger.debug(`TCP server already exists on port ${TUNNEL_ENTRY_PORT}`);
       }
 
-      console.log(`Tunnel [${tunnelId}] established`);
+      logger.info(`Tunnel [${tunnelId}] established successfully`);
     } catch (error) {
-      console.log(error);
+      logger.error(`Failed to process MESSAGE_TYPE_CONFIG for tunnelId=${tunnelId}: ${error.message}`);
     }
 
     return;
   }
 
-  const tunnel = state[port].websocketTunnels[tunnelId];
+  // Handle MESSAGE_TYPE_DATA
+  const tunnel = state[port]?.websocketTunnels?.[tunnelId];
+
   if (tunnel?.tcpConnections?.[uuid]?.socket) {
+    logger.trace(`Forwarding data to TCP socket for uuid=${uuid}, tunnelId=${tunnelId}`);
     tunnel.tcpConnections[uuid].socket.write(payload);
+  } else {
+    logger.debug(`No TCP connection found for uuid=${uuid}, tunnelId=${tunnelId}`);
   }
 }
 

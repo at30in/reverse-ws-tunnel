@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const net = require('net');
 const { v4: uuidv4 } = require('uuid');
 const { buildMessageBuffer } = require('./utils');
+const { logger } = require('../utils/logger');
 
 const RECONNECT_INTERVAL = 5000;
 const MESSAGE_TYPE_CONFIG = 0x01;
@@ -13,30 +14,26 @@ const PONG_WAIT = 5 * 1000; //5s
 /**
  * Starts the WebSocket tunnel client.
  * @param {Object} config - Configuration for tunnel.
- * @param {string} config.wsUrl
- * @param {string} config.tunnelId
- * @param {string} config.targetUrl
- * @param {number} config.targetPort
- * @param {string} config.tunnelEntryUrl
- * @param {number} config.tunnelEntryPort
  */
 function connectWebSocket(config) {
   const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers } = config;
+
   let ws;
   let pingInterval;
 
   try {
-    let headersParsed = JSON.parse(headers || '{}');
-    ws = new WebSocket(wsUrl, {
-      headers: headersParsed,
-    });
+    const headersParsed = JSON.parse(headers || '{}');
+    logger.debug(`Parsed headers: ${JSON.stringify(headersParsed)}`);
+    logger.debug(`Try to connect to: ${wsUrl}`);
+    ws = new WebSocket(wsUrl, { headers: headersParsed });
+    logger.debug(`Connectiion: ${wsUrl}`);
   } catch (error) {
-    console.error('Malformed headers:', error);
+    logger.error('Malformed headers:', error);
+    return;
   }
 
   ws.on('open', () => {
-    console.log('Connected to WebSocket server');
-
+    logger.info(`Connected to WebSocket server ${wsUrl}`);
     ({ pingInterval } = heartBeat(ws));
 
     const uuid = uuidv4();
@@ -50,6 +47,7 @@ function connectWebSocket(config) {
     };
 
     const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_CONFIG, JSON.stringify(payload));
+    logger.debug(`Sending tunnel config [uuid=${uuid}]`);
     ws.send(message);
   });
 
@@ -58,47 +56,64 @@ function connectWebSocket(config) {
     const type = data.readUInt8(36);
     const payload = data.slice(37);
 
+    logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+
     if (type === MESSAGE_TYPE_DATA) {
       if (payload.toString() === 'CLOSE') {
-        clients[uuid]?.end();
+        logger.debug(`Received CLOSE for uuid=${uuid}`);
+        if (clients[uuid]) {
+          clients[uuid].end();
+        }
         return;
       }
 
       const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+
       if (!client.write(payload)) {
-        client.once('drain', () => console.log(`Drain complete for ${uuid}`));
+        logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
+        client.once('drain', () => {
+          logger.info(`TCP socket drained for uuid=${uuid}`);
+        });
       }
     }
   });
 
   ws.on('close', () => {
-    console.log('WebSocket disconnected, cleaning up.');
+    logger.warn('WebSocket connection closed. Cleaning up clients.');
     clearInterval(pingInterval);
-    // clearTimeout(pongTimeout);
+
     for (const uuid in clients) {
+      logger.debug(`Closing TCP connection for uuid=${uuid}`);
       clients[uuid].end();
       clients[uuid].destroy();
       delete clients[uuid];
     }
+
+    logger.info(`Reconnecting in ${RECONNECT_INTERVAL / 1000}s...`);
     setTimeout(() => connectWebSocket(config), RECONNECT_INTERVAL);
   });
 
   ws.on('error', (err) => {
-    console.error('WebSocket error:', err);
+    logger.error('WebSocket error:', err);
   });
 }
 
+/**
+ * Sets up heartbeat (ping/pong) mechanism.
+ */
 function heartBeat(ws) {
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.ping();
+      logger.trace('Sent WebSocket ping');
 
       const pongTimeout = setTimeout(() => {
-        console.warn('Timeout: no pong received, closing the connection');
-        ws.terminate(); // forza la chiusura della connessione
+        logger.warn('No pong received. Terminating connection.');
+        ws.terminate();
       }, PONG_WAIT);
 
       ws.once('pong', () => {
+        logger.trace('Received WebSocket pong');
         clearTimeout(pongTimeout);
       });
     }
@@ -111,22 +126,30 @@ function heartBeat(ws) {
  * Creates a TCP connection to the target service.
  */
 function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
-  const client = net.createConnection(targetPort, new URL(targetUrl).hostname);
+  const hostname = new URL(targetUrl).hostname;
+  logger.debug(`Creating TCP connection to ${hostname}:${targetPort} for uuid=${uuid}`);
+
+  const client = net.createConnection(targetPort, hostname);
   clients[uuid] = client;
 
+  client.on('connect', () => {
+    logger.info(`TCP connection established for uuid=${uuid}`);
+  });
+
   client.on('data', (data) => {
+    logger.trace(`TCP data received for uuid=${uuid}, length=${data.length}`);
     const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_DATA, data);
     ws.send(message);
   });
 
   client.on('error', (err) => {
-    console.error(`TCP error [${uuid}]:`, err);
+    logger.error(`TCP error for uuid=${uuid}:`, err);
     client.destroy();
     delete clients[uuid];
   });
 
   client.on('end', () => {
-    console.log(`TCP connection closed for ${uuid}`);
+    logger.info(`TCP connection ended for uuid=${uuid}`);
     delete clients[uuid];
   });
 
