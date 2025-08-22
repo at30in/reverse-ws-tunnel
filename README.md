@@ -23,16 +23,20 @@ npm run docker:deploy
 
 By default, the service will start on port 4443.
 
-## ⚙️ Changing the Port
+## ⚙️ Environment Variables
 
-To use a different port, edit the PORT environment variable in the docker-compose.yml file.
+You can also set configuration via environment variables:
 
-Example (for port 443):
-
-```bash
-environment:
-  - PORT=443
-```
+| Variable               | Description                                               |
+| ---------------------- | --------------------------------------------------------- |
+| `TUNNEL_ID`            | Tunnel unique identifier                                  |
+| `WS_URL`               | WebSocket server URL                                      |
+| `TARGET_URL`           | Target URL for forwarding                                 |
+| `TUNNEL_ENTRY_URL`     | Optional tunnel entry URL                                 |
+| `TUNNEL_ENTRY_PORT`    | TCP port for tunnel entry                                 |
+| `HEADERS`              | Optional headers JSON string                              |
+| `ALLOW_INSICURE_CERTS` | Allow insecure SSL certificates (`true`/`false`)          |
+| `LOG_LEVEL`            | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
 
 ## ⚠️ Project Status
 

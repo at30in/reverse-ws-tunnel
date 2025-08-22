@@ -2,7 +2,9 @@
 const winston = require('winston');
 const fs = require('fs');
 const path = require('path');
-let configFilePath = path.join(__dirname + './../', 'log.config.json');
+const TOML = require('@iarna/toml');
+const FILE_CONFIG_NAME = 'config.toml';
+let configFilePath = path.join(__dirname + './../', FILE_CONFIG_NAME);
 
 const customLevels = {
   levels: {
@@ -56,9 +58,10 @@ function getLogLevel() {
 function loadConfigFromFile() {
   try {
     const content = fs.readFileSync(configFilePath, 'utf8');
-    const parsed = JSON.parse(content);
-    if (parsed.level) {
-      setLogLevel(parsed.level);
+    const parsed = TOML.parse(content);
+    // const parsed = JSON.parse(content);
+    if (parsed.logLevel) {
+      setLogLevel(parsed.logLevel);
     }
   } catch (err) {
     logger.warn(`Could not read or parse ${configFilePath}: ${err.message}`);
@@ -79,7 +82,7 @@ function initLogger(options = {}) {
     configFilePath = path.resolve(options.configPath);
   } else {
     const callerDir = require.main?.path || process.cwd();
-    const candidate = path.join(callerDir, 'log.config.json');
+    const candidate = path.join(callerDir, FILE_CONFIG_NAME);
     if (fs.existsSync(candidate)) {
       configFilePath = candidate;
     }
@@ -91,16 +94,6 @@ function initLogger(options = {}) {
 }
 
 initLogger();
-
-// function initLogger(options = {}) {
-//   if (options.configPath) {
-//     configFilePath = path.resolve(options.configPath);
-//     logger.debug(`Using external log config: ${configFilePath}`);
-//   }
-
-//   loadConfigFromFile();
-//   watchLogConfig();
-// }
 
 module.exports = {
   logger,
