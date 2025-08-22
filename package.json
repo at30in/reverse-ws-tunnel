@@ -1,6 +1,6 @@
 {
   "name": "reverse-ws-tunnel",
-  "version": "1.0.0",
+  "version": "1.0.0-dev-3",
   "description": "",
   "main": "index.js",
   "config": {
@@ -20,7 +20,8 @@
   },
   "exports": {
     "./server": "./server/index.js",
-    "./client": "./client/index.js"
+    "./client": "./client/index.js",
+    "./utils": "./utils/index.js"
   },
   "keywords": [],
   "author": "Andrea Trentin <at30in@gmail.com>",

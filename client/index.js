@@ -16,6 +16,4 @@ function startClient({ targetUrl, allowInsicureCerts, wsUrl, tunnelId, tunnelEnt
 
 module.exports = {
   startClient,
-  // startHttpProxyServer,
-  // connectWebSocket,
 };

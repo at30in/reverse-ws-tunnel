@@ -82,8 +82,6 @@ function initLogger(options = {}) {
     const candidate = path.join(callerDir, 'log.config.json');
     if (fs.existsSync(candidate)) {
       configFilePath = candidate;
-
-      console.log(configFilePath);
     }
   }
 

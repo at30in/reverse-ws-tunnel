@@ -49,6 +49,7 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
       const portKey = String(TUNNEL_ENTRY_PORT);
       if (!state[port][portKey]) {
         logger.info(`Starting new TCP server on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`);
+        state[port][portKey] = {};
         state[port][portKey] = {
           tcpServer: startTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port),
         };
