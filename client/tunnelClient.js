@@ -21,12 +21,16 @@ function connectWebSocket(config) {
   let ws;
   let pingInterval;
 
+  if (!tunnelId) {
+    throw new Error(`Missing mandatory tunnelId`);
+  }
+
   try {
-    const headersParsed = JSON.parse(headers || '{}');
+    const headersParsed = headers || '{}';
     logger.debug(`Parsed headers: ${JSON.stringify(headersParsed)}`);
     logger.debug(`Try to connect to: ${wsUrl}`);
     ws = new WebSocket(wsUrl, { headers: headersParsed });
-    logger.debug(`Connectiion: ${wsUrl}`);
+    logger.debug(`Connection: ${wsUrl}`);
   } catch (error) {
     logger.error('Malformed headers:', error);
     return;

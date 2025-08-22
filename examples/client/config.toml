@@ -1,0 +1,24 @@
+# Unique identifier of the tunnel UUID-V4
+tunnelId = "1cf2755f-c151-4281-b3f0-55c399035f87"
+
+# WebSocket server URL to connect to
+wsUrl = "wss://example.com/tunnel"
+
+# Target URL where the traffic will be forwarded
+targetUrl = "http://localhost:3000"
+
+# Optional URL for tunnel entry point (if applicable)
+tunnelEntryUrl = "http://localhost:4443"
+
+# TCP port to open for incoming tunnel connections
+tunnelEntryPort = 4443
+
+# Whether to allow insecure SSL certificates (true for dev/test only)
+allowInsicuereCerts = true
+
+# Log verbosity level: error, warn, info, debug, or trace
+logLevel = "trace"
+
+[headers]
+Authorization = "Bearer your-token"
+X-Custom-Header = "custom-value"
