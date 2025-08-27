@@ -1,6 +1,6 @@
 {
   "name": "reverse-ws-tunnel",
-  "version": "1.0.0-dev-3",
+  "version": "1.0.0-dev-6",
   "description": "",
   "main": "index.js",
   "config": {
