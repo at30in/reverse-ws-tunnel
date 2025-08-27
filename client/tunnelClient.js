@@ -3,6 +3,7 @@ const net = require('net');
 const { v4: uuidv4 } = require('uuid');
 const { buildMessageBuffer } = require('./utils');
 const { logger } = require('../utils/logger');
+const packageJson = require('../package.json');
 
 const RECONNECT_INTERVAL = 5000;
 const MESSAGE_TYPE_CONFIG = 0x01;
@@ -47,7 +48,7 @@ function connectWebSocket(config) {
       TUNNEL_ENTRY_URL: tunnelEntryUrl,
       TUNNEL_ENTRY_PORT: tunnelEntryPort,
       environment: 'production',
-      agentVersion: '1.0.0',
+      agentVersion: packageJson.version,
     };
 
     const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_CONFIG, JSON.stringify(payload));
