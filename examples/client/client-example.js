@@ -12,4 +12,5 @@ startClient({
   tunnelEntryUrl: config.tunnelEntryUrl,
   tunnelEntryPort: Number(config.tunnelEntryPort),
   headers: config.headers,
+  environment: config.environment,
 });
