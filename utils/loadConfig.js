@@ -5,9 +5,9 @@ const { logger } = require('./logger');
 const FILE_CONFIG_NAME = 'config.toml';
 const TOML = require('@iarna/toml');
 
-function loadConfig() {
+function loadConfig(customPath) {
   const callerDir = require.main?.path || process.cwd();
-  const configPath = path.join(callerDir, FILE_CONFIG_NAME);
+  const configPath = customPath ? path.join(customPath, FILE_CONFIG_NAME) : path.join(callerDir, FILE_CONFIG_NAME);
 
   let fileConfig = {};
 

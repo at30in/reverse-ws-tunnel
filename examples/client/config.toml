@@ -19,6 +19,9 @@ allowInsicuereCerts = true
 # Log verbosity level: error, warn, info, debug, or trace
 logLevel = "trace"
 
+# Environment
+environment = "production"
+
 [headers]
 Authorization = "Bearer your-token"
 X-Custom-Header = "custom-value"
