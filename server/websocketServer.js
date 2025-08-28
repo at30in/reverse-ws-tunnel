@@ -25,11 +25,12 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
     logger.info(`WebSocket server listening on port ${port}${host ? ` (host: ${host})` : ''}${path ? `, path: ${path}` : ''}`);
   });
 
-  state[portKey].webSocketServer.on('connection', (ws) => {
+  state[portKey].webSocketServer.on('connection', (ws, req) => {
     let tunnelId = null;
     let buffer = Buffer.alloc(0);
 
-    logger.info('WebSocket connection established');
+    const clientIp = req.socket.remoteAddress;
+    logger.info(`WebSocket connection established from ${clientIp}`);
 
     const interval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
