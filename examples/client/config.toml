@@ -8,10 +8,10 @@ wsUrl = "wss://example.com/tunnel"
 targetUrl = "http://localhost:3000"
 
 # Optional URL for tunnel entry point (if applicable)
-tunnelEntryUrl = "http://localhost:4443"
+tunnelEntryUrl = "http://localhost:8083"
 
 # TCP port to open for incoming tunnel connections
-tunnelEntryPort = 4443
+tunnelEntryPort = 8083
 
 # Whether to allow insecure SSL certificates (true for dev/test only)
 allowInsicuereCerts = true
