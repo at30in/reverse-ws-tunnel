@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const TOML = require('@iarna/toml');
 const FILE_CONFIG_NAME = 'config.toml';
-let configFilePath = path.join(__dirname + './../', FILE_CONFIG_NAME);
+
+let configFilePath = null;
 
 const customLevels = {
   levels: {
@@ -77,23 +78,35 @@ function watchLogConfig() {
   });
 }
 
-function initLogger(options = {}) {
-  if (options.configPath) {
-    configFilePath = path.resolve(options.configPath);
-  } else {
-    const callerDir = require.main?.path || process.cwd();
-    const candidate = path.join(callerDir, FILE_CONFIG_NAME);
-    if (fs.existsSync(candidate)) {
-      configFilePath = candidate;
+function initLogger(customPath = null) {
+  if (customPath) {
+    const resolvedPath = path.resolve(customPath);
+    try {
+      const stats = fs.statSync(resolvedPath);
+      if (stats.isFile()) {
+        configFilePath = resolvedPath;
+      } else if (stats.isDirectory()) {
+        configFilePath = path.join(resolvedPath, FILE_CONFIG_NAME);
+      } else {
+        logger.warn(`Invalid config path provided: ${resolvedPath}`);
+        return;
+      }
+    } catch (err) {
+      logger.warn(`Cannot access config path: ${resolvedPath} (${err.message})`);
+      return;
     }
+  } else {
+    const baseDir = require.main?.path || process.cwd();
+    configFilePath = path.join(baseDir, FILE_CONFIG_NAME);
   }
 
-  logger.debug(`Logger config file: ${configFilePath}`);
+  logger.debug(`Logger will read config from: ${configFilePath}`);
+
   loadConfigFromFile();
   watchLogConfig();
 }
 
-initLogger();
+// initLogger();
 
 module.exports = {
   logger,
