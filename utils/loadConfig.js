@@ -1,13 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-const { logger } = require('./logger');
+const { logger, initLogger } = require('./logger');
 const FILE_CONFIG_NAME = 'config.toml';
 const TOML = require('@iarna/toml');
 
 function loadConfig(customPath) {
   const callerDir = require.main?.path || process.cwd();
   const configPath = customPath ? path.join(customPath, FILE_CONFIG_NAME) : path.join(callerDir, FILE_CONFIG_NAME);
+
+  console.log({ configPath });
+
+  initLogger(configPath);
 
   let fileConfig = {};
 
