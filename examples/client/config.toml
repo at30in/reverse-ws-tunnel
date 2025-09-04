@@ -14,7 +14,7 @@ tunnelEntryUrl = "http://localhost:8083"
 tunnelEntryPort = 8083
 
 # Whether to allow insecure SSL certificates (true for dev/test only)
-allowInsicuereCerts = true
+allowInsicureCerts = true
 
 # Log verbosity level: error, warn, info, debug, or trace
 logLevel = "trace"
