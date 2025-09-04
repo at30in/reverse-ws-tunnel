@@ -6,7 +6,7 @@ const config = loadConfig();
 
 startClient({
   targetUrl: config.targetUrl,
-  allowInsicuereCerts: config.allowInsicuereCerts,
+  allowInsicureCerts: config.allowInsicureCerts,
   wsUrl: config.wsUrl,
   tunnelId: config.tunnelId,
   tunnelEntryUrl: config.tunnelEntryUrl,
