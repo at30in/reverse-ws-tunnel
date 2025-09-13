@@ -17,7 +17,7 @@ const PONG_WAIT = 5 * 1000; //5s
  * @param {Object} config - Configuration for tunnel.
  */
 function connectWebSocket(config) {
-  const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers } = config;
+  const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers, environment } = config;
 
   let ws;
   let pingInterval;
@@ -47,7 +47,7 @@ function connectWebSocket(config) {
       TARGET_PORT: targetPort,
       TUNNEL_ENTRY_URL: tunnelEntryUrl,
       TUNNEL_ENTRY_PORT: tunnelEntryPort,
-      environment: 'production',
+      environment,
       agentVersion: packageJson.version,
     };
 
