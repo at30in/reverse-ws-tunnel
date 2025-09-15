@@ -32,10 +32,22 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
     const clientIp = req.socket.remoteAddress;
     logger.info(`WebSocket connection established from ${clientIp}`);
 
+    // Setup heartbeat
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      logger.debug(`Pong received from client on tunnel [${tunnelId || 'unknown'}]`);
+    });
+
     const interval = setInterval(() => {
+      if (!ws.isAlive) {
+        logger.warn(`No pong received from client on tunnel [${tunnelId || 'unknown'}], terminating.`);
+        return ws.terminate();
+      }
+      ws.isAlive = false;
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping();
-        logger.trace('Ping sent to client');
+        logger.trace(`Ping sent to client on tunnel [${tunnelId || 'unknown'}]`);
       }
     }, PING_INTERVAL);
 
@@ -56,26 +68,42 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
         const payload = message.slice(73);
 
         logger.trace(`Parsed message - tunnelId: ${tunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`);
+
+        state[portKey].websocketTunnels[tunnelId] = ws;
+
         handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
       }
     });
 
-    ws.on('close', () => {
-      logger.info(`WebSocket connection closed for tunnel [${tunnelId}]`);
+    function cleanup(reason = 'unknown') {
+      logger.info(`Cleaning up tunnel [${tunnelId || 'unknown'}] (reason: ${reason})`);
+
       if (tunnelId) {
         delete state[portKey].websocketTunnels[tunnelId];
-        logger.debug(`Removed tunnel [${tunnelId}] from state`);
+        logger.debug(`Force removed tunnel [${tunnelId}] from state`);
+      } else {
+        logger.debug(`No tunnelId assigned yet, nothing to remove from state`);
       }
-      clearInterval(interval);
-    });
 
-    ws.on('pong', () => {
-      logger.debug(`Pong received from client on tunnel [${tunnelId || 'unknown'}]`);
+      clearInterval(interval);
+
+      try {
+        ws.terminate();
+      } catch (e) {
+        logger.debug(`Error in ws.terminate:`, e);
+      }
+
+      ws.removeAllListeners();
+    }
+
+    ws.on('close', () => {
+      logger.info(`WebSocket connection closed for tunnel [${tunnelId || 'unknown'}]`);
+      cleanup('close');
     });
 
     ws.on('error', (err) => {
       logger.error(`WebSocket error on tunnel [${tunnelId || 'unknown'}]:`, err);
-      clearInterval(interval);
+      cleanup('error');
     });
   });
 
