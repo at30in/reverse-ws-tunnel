@@ -278,17 +278,81 @@ Each client needs a unique `tunnelId` (UUID-v4). You can run multiple clients wi
 
 The repository includes working examples:
 
-- **Server**: `examples/server/` - Shows how to set up a tunnel server
-- **Client**: `examples/client/` - Shows how to connect and expose a local service
+- **Server**: `examples/server/` - Shows how to set up a tunnel server.
+- **Client**: `examples/client/` - Shows how to connect and expose a local service.
+- **Web Server**: `examples/webserver/` - A minimal target web server.
+
+### Complete Reverse Tunnel Example
+
+This example demonstrates how to set up a complete reverse tunnel to expose a local web server to the internet.
+
+**1. Start the Target Web Server**
+
+First, start the minimal web server that will be the destination of our tunnel. This server will respond with "Hello, World!".
 
 ```bash
-# Terminal 1: Start the server
-cd examples/server
-node server-example.js
+# Terminal 1: Start the web server
+node examples/webserver/webserver-example.js
+# Server running on http://localhost:3000/
+```
 
-# Terminal 2: Start the client
-cd examples/client
-node client-example.js
+**2. Start the Tunnel Server**
+
+Next, start the tunnel server. This server runs on a publicly accessible machine and listens for WebSocket connections from the tunnel client.
+
+The example server is located in `examples/server/`.
+
+```bash
+# Terminal 2: Start the tunnel server
+npm run example:server
+```
+
+This will start the server using the configuration from `examples/server/config.toml`. By default, it listens on port `3000` for WebSocket connections and port `4443` for public HTTP requests.
+
+**3. Start the Tunnel Client**
+
+Now, start the tunnel client. The client connects to the tunnel server and exposes the local web server.
+
+We need to configure the client to connect to our tunnel server and point to our local web server. The example client configuration is in `examples/client/config.toml`. Let's modify it to match our setup.
+
+**`examples/client/config.toml`**
+
+```toml
+# Unique identifier of the tunnel (UUID-v4)
+tunnelId = "1cf2755f-c151-4281-b3f0-55c399035f87"
+
+# WebSocket server URL to connect to
+wsUrl = "ws://localhost:8080/tunnel"
+
+# Target URL where the traffic will be forwarded
+targetUrl = "http://localhost:8080"
+
+# TCP port to open for incoming tunnel connections
+tunnelEntryPort = 4443
+```
+
+Now, run the client:
+
+```bash
+# Terminal 3: Start the tunnel client
+npm run example:client
+```
+
+**4. Test the Tunnel**
+
+The tunnel is now active. The tunnel server is listening for requests on port `4443` and will forward them to your local web server running on port `8080`.
+
+You can test it by making a `curl` request to the tunnel server's public endpoint, including the `x-tunnel-id` header:
+
+```bash
+# Terminal 4: Test the tunnel
+curl -H "x-tunnel-id: 1cf2755f-c151-4281-b3f0-55c399035f87" http://localhost:4443
+```
+
+You should see the "Hello, World!" response from your local web server.
+
+```
+Hello, World!
 ```
 
 ---
