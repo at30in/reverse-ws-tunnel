@@ -1,8 +1,8 @@
-# Unique identifier of the tunnel UUID-V4
+# Unique identifier of the tunnel (UUID-v4)
 tunnelId = "1cf2755f-c151-4281-b3f0-55c399035f87"
 
 # WebSocket server URL to connect to
-wsUrl = "wss://example.com/tunnel"
+wsUrl = "ws://localhost:4443"
 
 # Target URL where the traffic will be forwarded
 targetUrl = "http://localhost:3000"
@@ -13,11 +13,11 @@ tunnelEntryUrl = "http://localhost:8083"
 # TCP port to open for incoming tunnel connections
 tunnelEntryPort = 8083
 
-# Whether to allow insecure SSL certificates (true for dev/test only)
+# Whether to allow insecure SSL certificates (dev/test only)
 allowInsicureCerts = true
 
-# Log verbosity level: error, warn, info, debug, or trace
-logLevel = "trace"
+# Log verbosity level: error, warn, info, debug, trace
+logLevel = "info"
 
 # Environment
 environment = "production"

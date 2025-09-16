@@ -161,6 +161,13 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
   return client;
 }
 
+function resetClients() { // for testing
+  for (const key in clients) {
+    delete clients[key];
+  }
+}
+
 module.exports = {
   connectWebSocket,
+  resetClients, // for testing
 };
