@@ -1,4 +1,4 @@
-wsPort = 443
+wsPort = 4443
 tunnelIdHeaderName = "x-tunnel-id"
 host = "localhost"
 path = ""

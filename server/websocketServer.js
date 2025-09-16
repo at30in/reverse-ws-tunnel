@@ -69,8 +69,6 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
 
         logger.trace(`Parsed message - tunnelId: ${tunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`);
 
-        state[portKey].websocketTunnels[tunnelId] = ws;
-
         handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
       }
     });

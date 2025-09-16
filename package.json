@@ -1,6 +1,6 @@
 {
   "name": "reverse-ws-tunnel",
-  "version": "1.0.1-dev-1",
+  "version": "1.0.1-dev-2",
   "description": "",
   "main": "index.js",
   "config": {
@@ -18,7 +18,8 @@
     "docker:build": "cross-conf-env docker image build -f Dockerfile . -t $npm_package_config_dockerRegistry_prod$npm_package_name:$npm_package_version",
     "docker:deploy": "docker-compose up -d",
     "example:server": "node examples/server/server-example.js",
-    "example:client": "node examples/client/client-example.js"
+    "example:client": "node examples/client/client-example.js",
+    "example:webserver": "node examples/webserver/webserver-example.js"
   },
   "exports": {
     "./server": "./server/index.js",
