@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2025-10-05
+
+### Fixes
+- Corrected a typo in the environment variable name for `allowInsicureCerts` in the client configuration loader.
+
 ## [1.0.1] - 2025-09-16
 
 ### Features

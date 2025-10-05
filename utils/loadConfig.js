@@ -35,7 +35,7 @@ function loadConfig(customPath) {
     tunnelEntryUrl: process.env.TUNNEL_ENTRY_URL,
     tunnelEntryPort: process.env.TUNNEL_ENTRY_PORT ? Number(process.env.TUNNEL_ENTRY_PORT) : undefined,
     headers: process.env.HEADERS,
-    allowInsicuereCerts: process.env.ALLOW_INSICURE_CERTS === 'true',
+    allowInsicureCerts: process.env.ALLOW_INSICURE_CERTS === 'true',
     logLevel: process.env.LOG_LEVEL || 'info',
   };
 
