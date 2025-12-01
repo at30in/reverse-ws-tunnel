@@ -5,7 +5,7 @@ tunnelId = "1cf2755f-c151-4281-b3f0-55c399035f87"
 wsUrl = "ws://localhost:4443"
 
 # Target URL where the traffic will be forwarded
-targetUrl = "http://localhost:3000"
+targetUrl = "http://localhost:1880"
 
 # Optional URL for tunnel entry point (if applicable)
 tunnelEntryUrl = "http://localhost:8083"

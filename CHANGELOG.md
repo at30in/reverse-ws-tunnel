@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2025-11-29
+
+### Features
+- Updated `startClient` to return a client instance.
+- Added `connected` and `disconnected` events to the client instance.
+- Added `close()` method to the client instance to terminate the connection and stop reconnection.
+
 ## [1.0.2] - 2025-10-05
 
 ### Fixes

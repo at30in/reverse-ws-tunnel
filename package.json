@@ -1,6 +1,6 @@
 {
   "name": "reverse-ws-tunnel",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "",
   "main": "index.js",
   "config": {
@@ -14,7 +14,7 @@
     "test:safe": "node run-tests.js",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
-    "pack": "cd dist && npm pack ..",
+    "pack": "npm pack && mv *.tgz dist/",
     "docker:build": "cross-conf-env docker image build -f Dockerfile . -t $npm_package_config_dockerRegistry_prod$npm_package_name:$npm_package_version",
     "docker:deploy": "docker-compose up -d",
     "example:server": "node examples/server/server-example.js",

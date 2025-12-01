@@ -22,7 +22,6 @@ describe('connectWebSocket', () => {
   let mockTcpSocket;
 
   beforeEach(() => {
-    jest.resetModules();
     mockWs = {
       on: jest.fn(),
       send: jest.fn(),
@@ -112,5 +111,17 @@ describe('connectWebSocket', () => {
 
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
     jest.useRealTimers();
+  });
+
+  it('should return an EventEmitter and allow closing', () => {
+    const config = { tunnelId: 'test-tunnel', wsUrl: 'ws://test.com' };
+    const client = connectWebSocket(config);
+
+    expect(client.on).toBeDefined();
+    expect(client.emit).toBeDefined();
+    expect(client.close).toBeDefined();
+
+    client.close();
+    expect(mockWs.terminate).toHaveBeenCalled();
   });
 });

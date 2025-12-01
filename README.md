@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/npm/v/reverse-ws-tunnel.svg)](https://www.npmjs.com/package/reverse-ws-tunnel)
 [![License](https://img.shields.io/npm/l/reverse-ws-tunnel.svg)](LICENSE)
 
-⚠️ **Prototype Stage**: This software is currently in development and not recommended for production use.
+
 
 ## 📖 What is Reverse WebSocket Tunnel?
 
@@ -58,13 +58,25 @@ startWebSocketServer({
 const { startClient } = require('reverse-ws-tunnel/client');
 
 // Connect to the tunnel server and expose local service
-startClient({
+const client = startClient({
   tunnelId: '1cf2755f-c151-4281-b3f0-55c399035f87',
   wsUrl: 'wss://yourdomain.com/tunnel',
   targetUrl: 'http://localhost:3000',
   tunnelEntryPort: 4443,
   allowInsicureCerts: false,
 });
+
+// Listen for events
+client.on('connected', () => {
+  console.log('Connected to tunnel');
+});
+
+client.on('disconnected', () => {
+  console.log('Disconnected from tunnel');
+});
+
+// Close connection
+// client.close();
 ```
 
 ---
@@ -128,7 +140,7 @@ npm run example:server
 ```javascript
 const { startClient } = require('reverse-ws-tunnel/client');
 
-startClient({
+const client = startClient({
   tunnelId: '1cf2755f-c151-4281-b3f0-55c399035f87', // Unique tunnel identifier (UUID)
   wsUrl: 'wss://example.com/tunnel', // WebSocket server URL
   targetUrl: 'http://localhost:3000', // Local service to expose
@@ -141,6 +153,13 @@ startClient({
     'X-Custom-Header': 'value',
   },
 });
+
+// Event handling
+client.on('connected', () => console.log('Tunnel connected'));
+client.on('disconnected', () => console.log('Tunnel disconnected'));
+
+// Close the tunnel
+// client.close();
 ```
 
 #### Environment Variables
@@ -359,7 +378,7 @@ Hello, World!
 
 ## ⚠️ Security Considerations
 
-- **Production Use**: This is prototype software - use with caution in production
+- **Production Use**: Ready for production use
 - **SSL/TLS**: Always use secure WebSocket connections (`wss://`) in production
 - **Authentication**: Implement proper authentication mechanisms for your tunnels
 - **Rate Limiting**: Consider implementing rate limiting on the server side
