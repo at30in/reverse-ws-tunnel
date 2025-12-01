@@ -56,7 +56,10 @@ function startHttpProxyServer(targetUrl, allowInsecureCerts = false) {
     logger.info(`Proxy server is listening on port ${port}`);
   });
 
-  return server.address().port;
+  return {
+    port: server.address().port,
+    close: () => server.close(),
+  };
 }
 
 module.exports = {

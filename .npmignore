@@ -1,0 +1,46 @@
+# Test files
+__tests__/
+*.test.js
+jest.config.js
+jest.setup.js
+run-tests.js
+coverage/
+.nyc_output
+
+# Examples
+examples/
+
+# Development files
+.env
+.DS_Store
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+
+# Build artifacts
+dist/
+compiled/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+.npmrc
+.stryker-tmp
+src/custom/*
+!src/custom/tsconfig.json
+*.tgz
+

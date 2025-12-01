@@ -4,7 +4,7 @@ const { loadConfig } = require('reverse-ws-tunnel/utils');
 
 const config = loadConfig();
 
-startClient({
+const client = startClient({
   targetUrl: config.targetUrl,
   allowInsicureCerts: config.allowInsicureCerts,
   wsUrl: config.wsUrl,
@@ -14,3 +14,22 @@ startClient({
   headers: config.headers,
   environment: config.environment,
 });
+
+client.on('connected', () => {
+  console.log('Client connected to tunnel');
+});
+
+client.on('disconnected', () => {
+  console.log('Client disconnected from tunnel');
+});
+
+setTimeout(() => {
+  console.log('Closing client...');
+  client.close();
+}, 10000);
+
+// Example of closing the connection
+// setTimeout(() => {
+//   console.log('Closing client...');
+//   client.close();
+// }, 10000);

@@ -3,8 +3,10 @@ const { connectWebSocket } = require('./tunnelClient');
 
 function startClient({ targetUrl, allowInsicureCerts, wsUrl, tunnelId, tunnelEntryUrl, tunnelEntryPort, headers, environment }) {
   environment = environment || 'production';
-  const TARGET_PORT = startHttpProxyServer(targetUrl, allowInsicureCerts);
-  connectWebSocket({
+  const proxy = startHttpProxyServer(targetUrl, allowInsicureCerts);
+  const TARGET_PORT = proxy.port;
+
+  const client = connectWebSocket({
     wsUrl,
     tunnelId,
     targetUrl,
@@ -14,6 +16,14 @@ function startClient({ targetUrl, allowInsicureCerts, wsUrl, tunnelId, tunnelEnt
     headers,
     environment,
   });
+
+  const originalClose = client.close;
+  client.close = () => {
+    originalClose.call(client);
+    proxy.close();
+  };
+
+  return client;
 }
 
 module.exports = {

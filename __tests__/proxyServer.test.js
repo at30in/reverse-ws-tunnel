@@ -30,6 +30,7 @@ describe('startHttpProxyServer', () => {
       }),
       on: jest.fn(),
       address: () => ({ port: 0 }),
+      close: jest.fn(),
     };
     http.createServer.mockReturnValue(mockServer);
 
@@ -54,9 +55,13 @@ describe('startHttpProxyServer', () => {
   });
 
   it('should create an HTTP proxy server and listen on a random port', () => {
-    startHttpProxyServer('http://target.com');
+    const result = startHttpProxyServer('http://target.com');
     expect(http.createServer).toHaveBeenCalled();
     expect(mockServer.listen).toHaveBeenCalledWith(0, expect.any(Function));
+    expect(result).toHaveProperty('port');
+    expect(result).toHaveProperty('close');
+    result.close();
+    expect(mockServer.close).toHaveBeenCalled();
   });
 
   it('should proxy HTTP requests', () => {

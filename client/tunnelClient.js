@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const { EventEmitter } = require('events');
 const net = require('net');
 const { v4: uuidv4 } = require('uuid');
 const { buildMessageBuffer } = require('./utils');
@@ -19,88 +20,109 @@ const PONG_WAIT = 5 * 1000; //5s
 function connectWebSocket(config) {
   const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers, environment } = config;
 
+  const eventEmitter = new EventEmitter();
   let ws;
   let pingInterval;
+  let isClosed = false;
 
   if (!tunnelId) {
     throw new Error(`Missing mandatory tunnelId`);
   }
 
-  try {
-    const headersParsed = headers || '{}';
-    logger.debug(`Parsed headers: ${JSON.stringify(headersParsed)}`);
-    logger.debug(`Try to connect to: ${wsUrl}`);
-    ws = new WebSocket(wsUrl, { headers: headersParsed });
-    logger.debug(`Connection: ${wsUrl}`);
-  } catch (error) {
-    logger.error('Malformed headers:', error);
-    return;
-  }
+  const connect = () => {
+    if (isClosed) return;
 
-  ws.on('open', () => {
-    logger.info(`Connected to WebSocket server ${wsUrl}`);
-    ({ pingInterval } = heartBeat(ws));
+    try {
+      const headersParsed = headers || '{}';
+      logger.debug(`Parsed headers: ${JSON.stringify(headersParsed)}`);
+      logger.debug(`Try to connect to: ${wsUrl}`);
+      ws = new WebSocket(wsUrl, { headers: headersParsed });
+      logger.debug(`Connection: ${wsUrl}`);
+    } catch (error) {
+      logger.error('Malformed headers:', error);
+      return;
+    }
 
-    const uuid = uuidv4();
-    const payload = {
-      TARGET_URL: targetUrl,
-      TARGET_PORT: targetPort,
-      TUNNEL_ENTRY_URL: tunnelEntryUrl,
-      TUNNEL_ENTRY_PORT: tunnelEntryPort,
-      environment,
-      agentVersion: packageJson.version,
-    };
+    ws.on('open', () => {
+      logger.info(`Connected to WebSocket server ${wsUrl}`);
+      eventEmitter.emit('connected');
+      ({ pingInterval } = heartBeat(ws));
 
-    const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_CONFIG, JSON.stringify(payload));
-    logger.debug(`Sending tunnel config [uuid=${uuid}]`);
-    ws.send(message);
-  });
+      const uuid = uuidv4();
+      const payload = {
+        TARGET_URL: targetUrl,
+        TARGET_PORT: targetPort,
+        TUNNEL_ENTRY_URL: tunnelEntryUrl,
+        TUNNEL_ENTRY_PORT: tunnelEntryPort,
+        environment,
+        agentVersion: packageJson.version,
+      };
 
-  ws.on('message', (data) => {
-    const uuid = data.slice(0, 36).toString();
-    const type = data.readUInt8(36);
-    const payload = data.slice(37);
+      const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_CONFIG, JSON.stringify(payload));
+      logger.debug(`Sending tunnel config [uuid=${uuid}]`);
+      ws.send(message);
+    });
 
-    logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+    ws.on('message', (data) => {
+      const uuid = data.slice(0, 36).toString();
+      const type = data.readUInt8(36);
+      const payload = data.slice(37);
 
-    if (type === MESSAGE_TYPE_DATA) {
-      if (payload.toString() === 'CLOSE') {
-        logger.debug(`Received CLOSE for uuid=${uuid}`);
-        if (clients[uuid]) {
-          clients[uuid].end();
+      logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+
+      if (type === MESSAGE_TYPE_DATA) {
+        if (payload.toString() === 'CLOSE') {
+          logger.debug(`Received CLOSE for uuid=${uuid}`);
+          if (clients[uuid]) {
+            clients[uuid].end();
+          }
+          return;
         }
-        return;
+
+        const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+
+        if (!client.write(payload)) {
+          logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
+          client.once('drain', () => {
+            logger.info(`TCP socket drained for uuid=${uuid}`);
+          });
+        }
+      }
+    });
+
+    ws.on('close', () => {
+      logger.warn('WebSocket connection closed. Cleaning up clients.');
+      eventEmitter.emit('disconnected');
+      clearInterval(pingInterval);
+
+      for (const uuid in clients) {
+        logger.debug(`Closing TCP connection for uuid=${uuid}`);
+        clients[uuid].end();
+        clients[uuid].destroy();
+        delete clients[uuid];
       }
 
-      const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
-
-      if (!client.write(payload)) {
-        logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
-        client.once('drain', () => {
-          logger.info(`TCP socket drained for uuid=${uuid}`);
-        });
+      if (!isClosed) {
+        logger.info(`Reconnecting in ${RECONNECT_INTERVAL / 1000}s...`);
+        setTimeout(connect, RECONNECT_INTERVAL);
       }
+    });
+
+    ws.on('error', (err) => {
+      logger.error('WebSocket error:', err);
+    });
+  };
+
+  connect();
+
+  eventEmitter.close = () => {
+    isClosed = true;
+    if (ws) {
+      ws.terminate();
     }
-  });
+  };
 
-  ws.on('close', () => {
-    logger.warn('WebSocket connection closed. Cleaning up clients.');
-    clearInterval(pingInterval);
-
-    for (const uuid in clients) {
-      logger.debug(`Closing TCP connection for uuid=${uuid}`);
-      clients[uuid].end();
-      clients[uuid].destroy();
-      delete clients[uuid];
-    }
-
-    logger.info(`Reconnecting in ${RECONNECT_INTERVAL / 1000}s...`);
-    setTimeout(() => connectWebSocket(config), RECONNECT_INTERVAL);
-  });
-
-  ws.on('error', (err) => {
-    logger.error('WebSocket error:', err);
-  });
+  return eventEmitter;
 }
 
 /**
