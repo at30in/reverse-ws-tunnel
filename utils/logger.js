@@ -6,6 +6,7 @@ const TOML = require('@iarna/toml');
 const FILE_CONFIG_NAME = 'config.toml';
 
 let configFilePath = null;
+let logContext = null; // Can be set to 'CLIENT', 'SERVER', or any custom prefix
 
 const customLevels = {
   levels: {
@@ -32,10 +33,16 @@ const logger = winston.createLogger({
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
-        winston.format.colorize({ all: true }),
         winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message }) => {
-          return `[${timestamp}] ${level}: ${message}`;
+        winston.format.printf((info) => {
+          const contextPrefix = logContext ? `${logContext} | ` : '';
+          // Get the raw level (before colorization)
+          const rawLevel = info[Symbol.for('level')] || info.level;
+          // Apply color to level and message separately
+          const colorizer = winston.format.colorize();
+          const coloredLevel = colorizer.colorize(rawLevel, rawLevel);
+          const coloredMessage = colorizer.colorize(rawLevel, `${contextPrefix}${info.message}`);
+          return `[${info.timestamp}] ${coloredLevel}: ${coloredMessage}`;
         })
       ),
     }),
@@ -54,6 +61,17 @@ function setLogLevel(level) {
 
 function getLogLevel() {
   return logger.level;
+}
+
+function setLogContext(context) {
+  logContext = context;
+  if (context) {
+    logger.info(`Log context set to: ${context}`);
+  }
+}
+
+function getLogContext() {
+  return logContext;
 }
 
 function loadConfigFromFile() {
@@ -113,4 +131,6 @@ module.exports = {
   initLogger,
   setLogLevel,
   getLogLevel,
+  setLogContext,
+  getLogContext,
 };

@@ -1,7 +1,9 @@
 const { startHttpProxyServer } = require('./proxyServer');
 const { connectWebSocket } = require('./tunnelClient');
+const { setLogContext } = require('../utils/logger');
 
-function startClient({ targetUrl, allowInsicureCerts, wsUrl, tunnelId, tunnelEntryUrl, tunnelEntryPort, headers, environment }) {
+function startClient({ targetUrl, allowInsicureCerts, wsUrl, tunnelId, tunnelEntryUrl, tunnelEntryPort, headers, environment, autoReconnect }) {
+  setLogContext('CLIENT');
   environment = environment || 'production';
   const proxy = startHttpProxyServer(targetUrl, allowInsicureCerts);
   const TARGET_PORT = proxy.port;
@@ -15,6 +17,7 @@ function startClient({ targetUrl, allowInsicureCerts, wsUrl, tunnelId, tunnelEnt
     tunnelEntryPort,
     headers,
     environment,
+    autoReconnect,
   });
 
   const originalClose = client.close;

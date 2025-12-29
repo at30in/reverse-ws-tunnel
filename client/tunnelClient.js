@@ -18,7 +18,7 @@ const PONG_WAIT = 5 * 1000; //5s
  * @param {Object} config - Configuration for tunnel.
  */
 function connectWebSocket(config) {
-  const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers, environment } = config;
+  const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers, environment, autoReconnect = true } = config;
 
   const eventEmitter = new EventEmitter();
   let ws;
@@ -45,6 +45,7 @@ function connectWebSocket(config) {
 
     ws.on('open', () => {
       logger.info(`Connected to WebSocket server ${wsUrl}`);
+      logger.warn(`WS tunnel config sent: TARGET_PORT=${targetPort}, ENTRY_PORT=${tunnelEntryPort}`);
       eventEmitter.emit('connected');
       ({ pingInterval } = heartBeat(ws));
 
@@ -102,7 +103,7 @@ function connectWebSocket(config) {
         delete clients[uuid];
       }
 
-      if (!isClosed) {
+      if (!isClosed && autoReconnect) {
         logger.info(`Reconnecting in ${RECONNECT_INTERVAL / 1000}s...`);
         setTimeout(connect, RECONNECT_INTERVAL);
       }

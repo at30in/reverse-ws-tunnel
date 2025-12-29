@@ -51,14 +51,21 @@ function startHttpProxyServer(targetUrl, allowInsecureCerts = false) {
     }
   });
 
+  let assignedPort;
+
   server.listen(0, () => {
-    const port = server.address().port;
-    logger.info(`Proxy server is listening on port ${port}`);
+    assignedPort = server.address().port;
+    logger.info(`Proxy server is listening on port ${assignedPort}`);
   });
 
   return {
-    port: server.address().port,
-    close: () => server.close(),
+    get port() {
+      return assignedPort || server.address()?.port;
+    },
+    close: () => {
+      logger.info('Closing proxy server');
+      server.close();
+    },
   };
 }
 
