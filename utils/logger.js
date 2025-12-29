@@ -37,9 +37,9 @@ const logger = winston.createLogger({
         winston.format.printf((info) => {
           const contextPrefix = logContext ? `${logContext} | ` : '';
           // Get the raw level (before colorization)
-          const rawLevel = info[Symbol.for('level')] || info.level;
+          const rawLevel = info[Symbol.for('level')] || info.level || 'info';
           // Apply color to level and message separately
-          const colorizer = winston.format.colorize();
+           const colorizer = winston.format.colorize({ colors: customLevels.colors });
           const coloredLevel = colorizer.colorize(rawLevel, rawLevel);
           const coloredMessage = colorizer.colorize(rawLevel, `${contextPrefix}${info.message}`);
           return `[${info.timestamp}] ${coloredLevel}: ${coloredMessage}`;
@@ -114,7 +114,7 @@ function initLogger(customPath = null) {
       return;
     }
   } else {
-    const baseDir = require.main?.path || process.cwd();
+    const baseDir = process.cwd();
     configFilePath = path.join(baseDir, FILE_CONFIG_NAME);
   }
 
