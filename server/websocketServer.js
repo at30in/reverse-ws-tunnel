@@ -62,14 +62,35 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
         const message = buffer.slice(4, 4 + length);
         buffer = buffer.slice(4 + length);
 
-        tunnelId = message.slice(0, 36).toString();
+        const messageTunnelId = message.slice(0, 36).toString();
         const uuid = message.slice(36, 72).toString();
         const type = message.readUInt8(72);
         const payload = message.slice(73);
 
-        logger.trace(`Parsed message - tunnelId: ${tunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`);
+        logger.trace(`Parsed message - tunnelId: ${messageTunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`);
 
-        handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
+        // Check for duplicate tunnelId on first message (when tunnelId is not yet set)
+        if (!tunnelId && messageTunnelId) {
+          const existingTunnel = state[portKey]?.websocketTunnels?.[messageTunnelId];
+          if (existingTunnel && existingTunnel.ws && existingTunnel.ws !== ws) {
+            // Check if the existing WebSocket is still open
+            if (existingTunnel.ws.readyState === WebSocket.OPEN || existingTunnel.ws.readyState === WebSocket.CONNECTING) {
+              logger.error(`Tunnel [${messageTunnelId}] already exists with an active connection. Rejecting new connection.`);
+
+              // Assign tunnelId before closing so cleanup logs the correct value
+              tunnelId = messageTunnelId;
+
+              // Close the new connection immediately
+              ws.close(1008, `Duplicate tunnelId: ${messageTunnelId}`);
+              return;
+            } else {
+              logger.info(`Existing tunnel [${messageTunnelId}] has a closed connection. Allowing new connection.`);
+            }
+          }
+          tunnelId = messageTunnelId;
+        }
+
+        handleParsedMessage(ws, messageTunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
       }
     });
 
@@ -77,8 +98,14 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
       logger.info(`Cleaning up tunnel [${tunnelId || 'unknown'}] (reason: ${reason})`);
 
       if (tunnelId) {
-        delete state[portKey].websocketTunnels[tunnelId];
-        logger.debug(`Force removed tunnel [${tunnelId}] from state`);
+        // Only remove from state if this WebSocket is the one actually registered
+        const registeredTunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+        if (registeredTunnel && registeredTunnel.ws === ws) {
+          delete state[portKey].websocketTunnels[tunnelId];
+          logger.debug(`Removed tunnel [${tunnelId}] from state`);
+        } else {
+          logger.debug(`Tunnel [${tunnelId}] not removed - this was a duplicate/rejected connection`);
+        }
       } else {
         logger.debug(`No tunnelId assigned yet, nothing to remove from state`);
       }
