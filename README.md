@@ -152,6 +152,7 @@ const client = startClient({
     Authorization: 'Bearer token',
     'X-Custom-Header': 'value',
   },
+  autoReconnect: true, // Automatically reconnect on close (default: true)
 });
 
 // Event handling
@@ -173,6 +174,7 @@ client.on('disconnected', () => console.log('Tunnel disconnected'));
 | `TUNNEL_ENTRY_PORT`    | TCP port for tunnel entry          | ❌       | -       | `4443`                                 |
 | `HEADERS`              | Custom headers (JSON string)       | ❌       | -       | `{"Authorization":"Bearer token"}`     |
 | `ALLOW_INSICURE_CERTS` | Allow insecure SSL certificates    | ❌       | `false` | `true`                                 |
+| `AUTO_RECONNECT`       | Automatically reconnect on close   | ❌       | `true`  | `false`                                |
 | `LOG_LEVEL`            | Logging level                      | ❌       | `info`  | `debug`                                |
 
 #### TOML Configuration (`config.toml`)
@@ -195,6 +197,9 @@ tunnelEntryPort = 4443
 
 # Whether to allow insecure SSL certificates (dev/test only)
 allowInsicureCerts = false
+
+# Automatically reconnect on close
+autoReconnect = true
 
 # Log verbosity level: error, warn, info, debug, trace
 logLevel = "info"
