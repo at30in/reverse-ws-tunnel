@@ -23,11 +23,6 @@ client.on('disconnected', () => {
   console.log('Client disconnected from tunnel');
 });
 
-setTimeout(() => {
-  console.log('Closing client...');
-  client.close();
-}, 10000);
-
 // Example of closing the connection
 // setTimeout(() => {
 //   console.log('Closing client...');

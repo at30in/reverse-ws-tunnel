@@ -2,7 +2,8 @@
 tunnelId = "1cf2755f-c151-4281-b3f0-55c399035f87"
 
 # WebSocket server URL to connect to
-wsUrl = "ws://localhost:4443"
+# wsUrl = "ws://localhost:8080"
+wsUrl = "wss://flows-hybrid.yousolution.it"
 
 # Target URL where the traffic will be forwarded
 targetUrl = "http://localhost:1880"
@@ -23,5 +24,5 @@ logLevel = "info"
 environment = "production"
 
 [headers]
-Authorization = "Bearer your-token"
-X-Custom-Header = "custom-value"
+Authorization = "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJwcm9kdWNlckxheWVyb25lIiwic3ViIjoiNjA4N2E4YjEyNWI4MjUwMDE2NjBhNzEyIiwicm9sZSI6IldlYlNlcnZpY2UiLCJjb21wYW55IjoiNjA4N2E4YjEyNWI4MjUwMDE2NjBhNzExIiwiaWF0IjoxNjE5NTAzMjgxfQ.TlzV2Rj0WKfVZWpoZTMUSrSyzKM7f-DJ3bXpO_FXjUb4eEepGQRLspWOwjfAW81apuCc0PhfT6S9vHc8wy3IWg"
+x-websocket-tunnel-port = "8080"
