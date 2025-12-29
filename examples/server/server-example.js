@@ -1,7 +1,7 @@
 require('dotenv').config();
-const { startWebSocketServer, setLogContext } = require('reverse-ws-tunnel/server');
-const { loadConfig } = require('reverse-ws-tunnel/utils');
-// const { setLogLevel, getLogLevel } = require('reverse-ws-tunnel/utils');
+const { startWebSocketServer, setLogContext } = require('@remotelinker/reverse-ws-tunnel/server');
+const { loadConfig } = require('@remotelinker/reverse-ws-tunnel/utils');
+// const { setLogLevel, getLogLevel } = require('@remotelinker/reverse-ws-tunnel/utils');
 
 // setLogLevel('error');
 setLogContext('SERVER');

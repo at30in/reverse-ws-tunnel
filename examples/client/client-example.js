@@ -1,6 +1,6 @@
 require('dotenv').config();
-const { startClient } = require('reverse-ws-tunnel/client');
-const { loadConfig } = require('reverse-ws-tunnel/utils');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
+const { loadConfig } = require('@remotelinker/reverse-ws-tunnel/utils');
 
 const config = loadConfig();
 

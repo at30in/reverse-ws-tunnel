@@ -2,8 +2,8 @@
 
 **A Node.js library for creating secure reverse tunnels over WebSocket connections.**
 
-[![Version](https://img.shields.io/npm/v/reverse-ws-tunnel.svg)](https://www.npmjs.com/package/reverse-ws-tunnel)
-[![License](https://img.shields.io/npm/l/reverse-ws-tunnel.svg)](LICENSE)
+[![Version](https://img.shields.io/npm/v/@remotelinker/reverse-ws-tunnel.svg)](https://www.npmjs.com/package/@remotelinker/reverse-ws-tunnel)
+[![License](https://img.shields.io/npm/l/@remotelinker/reverse-ws-tunnel.svg)](LICENSE)
 
 
 
@@ -33,7 +33,7 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 ## 📦 Installation
 
 ```bash
-npm install reverse-ws-tunnel
+npm install @remotelinker/reverse-ws-tunnel
 ```
 
 ## 🚀 Quick Start
@@ -41,7 +41,7 @@ npm install reverse-ws-tunnel
 ### Server Setup
 
 ```javascript
-const { startWebSocketServer } = require('reverse-ws-tunnel/server');
+const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
 
 // Start the WebSocket tunnel server
 startWebSocketServer({
@@ -55,7 +55,7 @@ startWebSocketServer({
 ### Client Setup
 
 ```javascript
-const { startClient } = require('reverse-ws-tunnel/client');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 // Connect to the tunnel server and expose local service
 const client = startClient({
@@ -96,7 +96,7 @@ _Configuration priority: JavaScript parameters > config.toml > environment varia
 #### JavaScript API
 
 ```javascript
-const { startWebSocketServer } = require('reverse-ws-tunnel/server');
+const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
 
 startWebSocketServer({
   port: 443, // WebSocket server port
@@ -138,7 +138,7 @@ npm run example:server
 #### JavaScript API
 
 ```javascript
-const { startClient } = require('reverse-ws-tunnel/client');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 const client = startClient({
   tunnelId: '1cf2755f-c151-4281-b3f0-55c399035f87', // Unique tunnel identifier (UUID)
@@ -240,7 +240,7 @@ The service will start on port 4443 by default.
 When using Docker, you can pass all the environment variables mentioned above:
 
 ```bash
-docker run -e TUNNEL_ID=your-uuid -e WS_URL=wss://example.com -e TARGET_URL=http://localhost:3000 reverse-ws-tunnel
+docker run -e TUNNEL_ID=your-uuid -e WS_URL=wss://example.com -e TARGET_URL=http://localhost:3000 remotelinker/reverse-ws-tunnel
 ```
 
 ---

@@ -43,13 +43,13 @@ app.listen(3000, () => {
 
 **Step 2: Install the tunneling library**
 ```bash
-npm install reverse-ws-tunnel
+npm install @remotelinker/reverse-ws-tunnel
 ```
 
 **Step 3: Create tunnel configuration**
 ```javascript
 // tunnel-config.js
-const { startClient } = require('reverse-ws-tunnel/client');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 const client = startClient({
   tunnelId: '550e8400-e29b-41d4-a716-446655440000', // Generate a UUID
@@ -69,7 +69,7 @@ client.on('connected', () => {
 
 ```javascript
 // iot-tunnel.js
-const { startClient } = require('reverse-ws-tunnel/client');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 const client = startClient({
   tunnelId: 'device-001-sensor-data',
@@ -98,7 +98,7 @@ client.on('disconnected', () => {
 
 ```javascript
 // webhook-tester.js
-const { startClient } = require('reverse-ws-tunnel/client');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 const express = require('express');
 
 const app = express();
@@ -261,7 +261,7 @@ const secureClient = startClient({
 **Server-side SSL termination:**
 ```javascript
 const https = require('https');
-const { startWebSocketServer } = require('reverse-ws-tunnel/server');
+const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
 
 const sslOptions = {
   key: fs.readFileSync('server.key'),
@@ -292,7 +292,7 @@ startWebSocketServer({
 version: '3.8'
 services:
   tunnel-server:
-    image: reverse-ws-tunnel:latest
+    image: remotelinker/reverse-ws-tunnel:latest
     ports:
       - "443:443"
       - "80:80"
@@ -307,7 +307,7 @@ services:
     restart: unless-stopped
 
   tunnel-client:
-    image: reverse-ws-tunnel:latest
+    image: remotelinker/reverse-ws-tunnel:latest
     environment:
       - TUNNEL_ID=prod-service-001
       - WS_URL=wss://tunnel.yourdomain.com/tunnel
@@ -338,7 +338,7 @@ spec:
     spec:
       containers:
       - name: tunnel-server
-        image: reverse-ws-tunnel:latest
+        image: remotelinker/reverse-ws-tunnel:latest
         ports:
         - containerPort: 443
         env:
@@ -448,7 +448,7 @@ client.on('disconnected', (reason) => {
 process.env.LOG_LEVEL = 'debug';
 
 // Or programmatically
-const { setLogLevel } = require('reverse-ws-tunnel/utils');
+const { setLogLevel } = require('@remotelinker/reverse-ws-tunnel/utils');
 setLogLevel('trace');
 ```
 
@@ -486,7 +486,7 @@ clients.forEach((client, index) => {
 
 ```javascript
 // Server-side auth validation
-const { startWebSocketServer } = require('reverse-ws-tunnel/server');
+const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
 
 const authenticateTunnel = (headers) => {
   const token = headers['authorization'];
@@ -512,7 +512,7 @@ startWebSocketServer({
 ```javascript
 // Handle WebSocket connections through tunnel
 const WebSocket = require('ws');
-const { startClient } = require('reverse-ws-tunnel/client');
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 const client = startClient({
   tunnelId: 'websocket-service',
