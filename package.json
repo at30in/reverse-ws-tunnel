@@ -3,6 +3,16 @@
   "version": "1.0.5",
   "description": "",
   "main": "index.cjs",
+  "types": "types/index.d.ts",
+  "files": [
+    "index.js",
+    "index.mjs",
+    "index.cjs",
+    "client/",
+    "server/",
+    "utils/",
+    "types/"
+  ],
   "config": {
     "dockerRegistry": {
       "prod": "",
@@ -14,6 +24,8 @@
     "test:safe": "node run-tests.js",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
+    "type-check": "tsc --noEmit examples/typescript/*.ts",
+    "build:types": "tsc",
     "pack": "npm pack && mv *.tgz dist/",
     "docker:build": "cross-conf-env docker image build -f Dockerfile . -t $npm_package_config_dockerRegistry_prodremotelinker/reverse-ws-tunnel:$npm_package_version",
     "docker:deploy": "docker-compose up -d",
@@ -57,6 +69,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "typescript": "^5.9.3"
   }
 }
