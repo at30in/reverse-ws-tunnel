@@ -2,7 +2,7 @@
   "name": "@remotelinker/reverse-ws-tunnel",
   "version": "1.0.4",
   "description": "",
-  "main": "index.js",
+  "main": "index.cjs",
   "config": {
     "dockerRegistry": {
       "prod": "",
@@ -18,13 +18,28 @@
     "docker:build": "cross-conf-env docker image build -f Dockerfile . -t $npm_package_config_dockerRegistry_prodremotelinker/reverse-ws-tunnel:$npm_package_version",
     "docker:deploy": "docker-compose up -d",
     "example:server": "node examples/server/server-example.js",
+    "example:server:esm": "node examples/server/server-example.mjs",
     "example:client": "node examples/client/client-example.js",
+    "example:client:esm": "node examples/client/client-example.mjs",
     "example:webserver": "node examples/webserver/webserver-example.js"
   },
   "exports": {
-    "./server": "./server/index.js",
-    "./client": "./client/index.js",
-    "./utils": "./utils/index.js"
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.cjs"
+    },
+    "./server": {
+      "import": "./server/index.mjs",
+      "require": "./server/index.js"
+    },
+    "./client": {
+      "import": "./client/index.mjs",
+      "require": "./client/index.js"
+    },
+    "./utils": {
+      "import": "./utils/index.mjs",
+      "require": "./utils/index.js"
+    }
   },
   "keywords": [],
   "author": "Andrea Trentin <at30in@gmail.com>",

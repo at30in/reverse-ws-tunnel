@@ -48,7 +48,12 @@ npm install @remotelinker/reverse-ws-tunnel
 
 **Step 3: Create tunnel configuration**
 ```javascript
-// tunnel-config.js
+// tunnel-config.js (CommonJS)
+// const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
+
+// tunnel-config.mjs (ES Modules)
+// import { startClient } from '@remotelinker/reverse-ws-tunnel/client';
+
 const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 const client = startClient({
@@ -261,6 +266,8 @@ const secureClient = startClient({
 **Server-side SSL termination:**
 ```javascript
 const https = require('https');
+// const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server'); // CommonJS
+// import { startWebSocketServer } from '@remotelinker/reverse-ws-tunnel/server'; // ES Modules
 const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
 
 const sslOptions = {
@@ -448,6 +455,8 @@ client.on('disconnected', (reason) => {
 process.env.LOG_LEVEL = 'debug';
 
 // Or programmatically
+// const { setLogLevel } = require('@remotelinker/reverse-ws-tunnel/utils'); // CommonJS
+// import { setLogLevel } from '@remotelinker/reverse-ws-tunnel/utils'; // ES Modules
 const { setLogLevel } = require('@remotelinker/reverse-ws-tunnel/utils');
 setLogLevel('trace');
 ```
@@ -486,6 +495,8 @@ clients.forEach((client, index) => {
 
 ```javascript
 // Server-side auth validation
+// const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server'); // CommonJS
+// import { startWebSocketServer } from '@remotelinker/reverse-ws-tunnel/server'; // ES Modules
 const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
 
 const authenticateTunnel = (headers) => {
@@ -512,6 +523,8 @@ startWebSocketServer({
 ```javascript
 // Handle WebSocket connections through tunnel
 const WebSocket = require('ws');
+// const { startClient } = require('@remotelinker/reverse-ws-tunnel/client'); // CommonJS
+// import { startClient } from '@remotelinker/reverse-ws-tunnel/client'; // ES Modules
 const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
 
 const client = startClient({
