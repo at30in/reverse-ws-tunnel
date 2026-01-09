@@ -36,13 +36,39 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 npm install @remotelinker/reverse-ws-tunnel
 ```
 
+## 📦 Module Compatibility
+
+This library supports both **CommonJS** (`require()`) and **ES Modules** (`import`) for maximum compatibility:
+
+### CommonJS (Traditional)
+```javascript
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
+const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
+const { loadConfig } = require('@remotelinker/reverse-ws-tunnel/utils');
+```
+
+### ES Modules (Modern)
+```javascript
+import { startClient } from '@remotelinker/reverse-ws-tunnel/client';
+import { startWebSocketServer } from '@remotelinker/reverse-ws-tunnel/server';
+import { loadConfig } from '@remotelinker/reverse-ws-tunnel/utils';
+```
+
 ## 🚀 Quick Start
 
 ### Server Setup
 
+**CommonJS:**
 ```javascript
 const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
+```
 
+**ES Modules:**
+```javascript
+import { startWebSocketServer } from '@remotelinker/reverse-ws-tunnel/server';
+```
+
+```javascript
 // Start the WebSocket tunnel server
 startWebSocketServer({
   port: 443,
@@ -54,9 +80,17 @@ startWebSocketServer({
 
 ### Client Setup
 
+**CommonJS:**
 ```javascript
 const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
+```
 
+**ES Modules:**
+```javascript
+import { startClient } from '@remotelinker/reverse-ws-tunnel/client';
+```
+
+```javascript
 // Connect to the tunnel server and expose local service
 const client = startClient({
   tunnelId: '1cf2755f-c151-4281-b3f0-55c399035f87',
@@ -96,7 +130,11 @@ _Configuration priority: JavaScript parameters > config.toml > environment varia
 #### JavaScript API
 
 ```javascript
+// CommonJS
 const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
+
+// ES Modules
+// import { startWebSocketServer } from '@remotelinker/reverse-ws-tunnel/server';
 
 startWebSocketServer({
   port: 443, // WebSocket server port
@@ -138,7 +176,11 @@ npm run example:server
 #### JavaScript API
 
 ```javascript
+// CommonJS
 const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
+
+// ES Modules
+// import { startClient } from '@remotelinker/reverse-ws-tunnel/client';
 
 const client = startClient({
   tunnelId: '1cf2755f-c151-4281-b3f0-55c399035f87', // Unique tunnel identifier (UUID)
