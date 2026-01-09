@@ -38,7 +38,7 @@ npm install @remotelinker/reverse-ws-tunnel
 
 ## 📦 Module Compatibility
 
-This library supports both **CommonJS** (`require()`) and **ES Modules** (`import`) for maximum compatibility:
+This library supports both **CommonJS** (`require()`) and **ES Modules** (`import`) for maximum compatibility, and includes **full TypeScript support**:
 
 ### CommonJS (Traditional)
 ```javascript
@@ -52,6 +52,22 @@ const { loadConfig } = require('@remotelinker/reverse-ws-tunnel/utils');
 import { startClient } from '@remotelinker/reverse-ws-tunnel/client';
 import { startWebSocketServer } from '@remotelinker/reverse-ws-tunnel/server';
 import { loadConfig } from '@remotelinker/reverse-ws-tunnel/utils';
+```
+
+### TypeScript
+```typescript
+import { startClient } from '@remotelinker/reverse-ws-tunnel/client';
+
+// Full type safety with IntelliSense
+const client = startClient({
+  tunnelId: 'uuid',
+  wsUrl: 'wss://example.com/tunnel',
+  targetUrl: 'http://localhost:3000',
+  tunnelEntryPort: 4443
+});
+
+// Typed event handlers
+client.on('connected', () => console.log('Connected!'));
 ```
 
 ## 🚀 Quick Start
