@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2026-01-09
+
+### Features
+- Added complete TypeScript support with declaration files (.d.ts)
+- Added TypeScript type definitions for all exported functions and interfaces
+- Added IntelliSense and autocompletion support for TypeScript projects
+- Added TypeScript examples and type checking scripts
+- Resolved TS7016 error for projects importing the library
+
+## [1.0.5] - 2026-01-09
+
+### Features
+- Added dual CommonJS/ESM compatibility
+- Implemented conditional exports for both module systems
+- Added ESM wrapper files (.mjs) for all modules
+- Added root index files for CommonJS (index.cjs) and ESM (index.mjs)
+- Updated Jest configuration for dual module support
+- Added ESM examples alongside existing CommonJS examples
+- Maintained full backward compatibility
+
+### Technical Changes
+- Updated package.json with conditional exports
+- Renamed jest.config.js to jest.config.cjs
+- Added support for both `require()` and `import` statements
+
+## [1.0.4] - 2026-01-09
+
+### Fixes
+- Fixed logger colorize issues in unit tests
+- Added fallback for undefined log levels in printf format
+- Used process.cwd() for default config path in initLogger
+- Passed custom colors to winston colorize formatter
+
 ## [1.0.3] - 2025-11-29
 
 ### Features
@@ -52,3 +85,13 @@ All notable changes to this project will be documented in this file.
 - Refactored dist directory structure.
 - Changed `tunnelIdHeaderName`.
 - Refactored with ChatGPT suggestions.
+
+---
+
+[1.0.6]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.5...v1.0.6
+[1.0.5]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.4...v1.0.5
+[1.0.4]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.3...v1.0.4
+[1.0.3]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/remoteLinker/reverse-ws-tunnel/releases/tag/v1.0.0

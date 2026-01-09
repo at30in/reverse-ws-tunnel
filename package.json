@@ -1,9 +1,17 @@
 {
   "name": "@remotelinker/reverse-ws-tunnel",
-  "version": "1.0.6",
-  "description": "",
+  "version": "1.0.7",
+  "description": "A Node.js library for creating secure reverse tunnels over WebSocket connections",
   "main": "index.cjs",
   "types": "types/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/remoteLinker/reverse-ws-tunnel.git"
+  },
+  "homepage": "https://github.com/remoteLinker/reverse-ws-tunnel#readme",
+  "bugs": {
+    "url": "https://github.com/remoteLinker/reverse-ws-tunnel/issues"
+  },
   "files": [
     "index.js",
     "index.mjs",
