@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.8] - 2026-01-21
+
+### Features
+- Added application-level heartbeat mechanism to detect silent WebSocket closures
+- Implemented unidirectional client→server ping-pong (20s intervals, 45s timeout)
+- Added sliding window health monitoring with automatic reconnection
+- Implemented progressive backoff for reconnections: 1s → 2s → 5s → 10s → 30s max
+- Fire-and-forget ping mechanism with monotonic sequence numbers
+- Server responds immediately to application ping messages
+- Resolves "socket hang up" errors caused by firewall/NAT silent disconnections
+
+### Technical Details
+- Added `MESSAGE_TYPE_APP_PING` (0x03) and `MESSAGE_TYPE_APP_PONG` (0x04) message types
+- Client sends JSON-formatted ping messages every 20 seconds
+- Server responds with pong messages containing same sequence number
+- Health monitor checks sliding window of 45 seconds for pong responses
+- Automatic WebSocket termination and reconnection when health timeout exceeded
+
 ## [1.0.6] - 2026-01-09
 
 ### Features
@@ -88,6 +106,8 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+[1.0.8]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.7...v1.0.8
+[1.0.7]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.3...v1.0.4

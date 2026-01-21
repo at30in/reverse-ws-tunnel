@@ -9,9 +9,14 @@ const packageJson = require('../package.json');
 const RECONNECT_INTERVAL = 5000;
 const MESSAGE_TYPE_CONFIG = 0x01;
 const MESSAGE_TYPE_DATA = 0x02;
+const MESSAGE_TYPE_APP_PING = 0x03;
+const MESSAGE_TYPE_APP_PONG = 0x04;
 const clients = {};
 const PING_INTERVAL = 30 * 1000; //30s
 const PONG_WAIT = 5 * 1000; //5s
+const APP_PING_INTERVAL = 20 * 1000; // 20 secondi
+const HEALTH_TIMEOUT = 45 * 1000; // 45 secondi sliding window
+const RECONNECT_BACKOFF = [1000, 2000, 5000, 10000, 30000]; // Backoff progressivo
 
 /**
  * Starts the WebSocket tunnel client.
@@ -23,7 +28,12 @@ function connectWebSocket(config) {
   const eventEmitter = new EventEmitter();
   let ws;
   let pingInterval;
+  let appPingInterval;
+  let healthMonitor;
   let isClosed = false;
+  let reconnectAttempt = 0;
+  let pingSeq = 0;
+  let lastPongTs = Date.now();
 
   if (!tunnelId) {
     throw new Error(`Missing mandatory tunnelId`);
@@ -48,6 +58,10 @@ function connectWebSocket(config) {
       logger.warn(`WS tunnel config sent: TARGET_PORT=${targetPort}, ENTRY_PORT=${tunnelEntryPort}`);
       eventEmitter.emit('connected');
       ({ pingInterval } = heartBeat(ws));
+
+      // Avviare heartbeat applicativo
+      appPingInterval = startAppHeartbeat(ws, tunnelId, { pingSeq: () => pingSeq, incPingSeq: () => pingSeq++ });
+      healthMonitor = startHealthMonitor(ws, tunnelId, { lastPongTs: () => lastPongTs, setLastPongTs: (ts) => lastPongTs = ts });
 
       const uuid = uuidv4();
       const payload = {
@@ -82,6 +96,20 @@ function connectWebSocket(config) {
 
         const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
 
+      } else if (type === MESSAGE_TYPE_APP_PONG) {
+        try {
+          const pongData = JSON.parse(payload.toString());
+          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
+          if (pongData.seq >= (pingSeq - 10)) {
+            lastPongTs = Date.now();
+            logger.trace(`App pong received: seq=${pongData.seq}`);
+          } else {
+            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+          }
+        } catch (err) {
+          logger.error(`Invalid app pong format: ${err.message}`);
+        }
+
         if (!client.write(payload)) {
           logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
           client.once('drain', () => {
@@ -95,6 +123,8 @@ function connectWebSocket(config) {
       logger.warn('WebSocket connection closed. Cleaning up clients.');
       eventEmitter.emit('disconnected');
       clearInterval(pingInterval);
+      clearInterval(appPingInterval);
+      clearInterval(healthMonitor);
 
       for (const uuid in clients) {
         logger.debug(`Closing TCP connection for uuid=${uuid}`);
@@ -104,8 +134,12 @@ function connectWebSocket(config) {
       }
 
       if (!isClosed && autoReconnect) {
-        logger.info(`Reconnecting in ${RECONNECT_INTERVAL / 1000}s...`);
-        setTimeout(connect, RECONNECT_INTERVAL);
+        const delay = RECONNECT_BACKOFF[reconnectAttempt] || RECONNECT_BACKOFF[RECONNECT_BACKOFF.length - 1];
+        logger.info(`Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempt + 1})`);
+        setTimeout(() => {
+          reconnectAttempt = Math.min(reconnectAttempt + 1, RECONNECT_BACKOFF.length);
+          connect();
+        }, delay);
       }
     });
 
@@ -182,6 +216,42 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
   });
 
   return client;
+}
+
+/**
+ * Starts the application-level heartbeat (ping every 20 seconds)
+ */
+function startAppHeartbeat(ws, tunnelId, pingState) {
+  return setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      pingState.incPingSeq();
+      const currentPingSeq = pingState.pingSeq();
+      const pingData = JSON.stringify({
+        type: 'ping',
+        seq: currentPingSeq,
+        ts: Date.now()
+      });
+
+      const message = buildMessageBuffer(tunnelId, uuidv4(), MESSAGE_TYPE_APP_PING, pingData);
+      ws.send(message);
+
+      logger.trace(`App ping sent: seq=${currentPingSeq}`);
+    }
+  }, APP_PING_INTERVAL);
+}
+
+/**
+ * Starts health monitoring with sliding window timeout
+ */
+function startHealthMonitor(ws, tunnelId, pongState) {
+  return setInterval(() => {
+    const now = Date.now();
+    const currentLastPongTs = pongState.lastPongTs();
+    if (now - currentLastPongTs > HEALTH_TIMEOUT) {
+      logger.warn(`Health timeout exceeded (${HEALTH_TIMEOUT}ms) - terminating connection`);
+      ws.terminate();
+    }
+  }, 5000); // Check every 5 seconds
 }
 
 function resetClients() { // for testing

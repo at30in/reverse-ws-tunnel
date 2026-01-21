@@ -1,5 +1,5 @@
 const state = require('./state');
-const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA } = require('./constants');
+const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA, MESSAGE_TYPE_APP_PING, MESSAGE_TYPE_APP_PONG } = require('./constants');
 const { startTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
 
@@ -62,6 +62,25 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
       logger.error(`Failed to process MESSAGE_TYPE_CONFIG for tunnelId=${tunnelId}: ${error.message}`);
     }
 
+    return;
+  }
+
+  // Handle MESSAGE_TYPE_APP_PING
+  if (type === MESSAGE_TYPE_APP_PING) {
+    try {
+      const pingData = JSON.parse(payload.toString());
+      const pongData = JSON.stringify({
+        type: 'pong',
+        seq: pingData.seq
+      });
+
+      const pongMessage = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_APP_PONG, pongData);
+      ws.send(pongMessage);
+
+      logger.trace(`App pong sent: seq=${pingData.seq} for tunnel ${tunnelId}`);
+    } catch (err) {
+      logger.error(`Invalid app ping format for tunnel ${tunnelId}: ${err.message}`);
+    }
     return;
   }
 
