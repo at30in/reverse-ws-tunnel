@@ -78,79 +78,62 @@ function connectWebSocket(config) {
       ws.send(message);
     });
 
+    let messageBuffer = Buffer.alloc(0);
+    
     ws.on('message', (data) => {
-      // Check if this might be a pong message (starts with length prefix)
-      let uuid, type, payload;
-      
-      if (data.length >= 4) {
-        const potentialLength = data.readUInt32BE(0);
-        // If it looks like a length prefix and the total size matches, parse as new format
-        if (potentialLength < 100000 && data.length === 4 + potentialLength) {
-          const message = data.slice(4);
-          const messageTunnelId = message.slice(0, 36).toString();
-          uuid = message.slice(36, 72).toString();
-          type = message.readUInt8(72);
-          payload = message.slice(73);
-          logger.trace(`Received WS message (new format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
-        } else {
-          // Old format
-          uuid = data.slice(0, 36).toString();
-          type = data.readUInt8(36);
-          payload = data.slice(37);
-          logger.trace(`Received WS message (old format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
-        }
-      } else {
-        // Too small, use old format
-        uuid = data.slice(0, 36).toString();
-        type = data.readUInt8(36);
-        payload = data.slice(37);
-        logger.trace(`Received WS message (old format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
-      }
+      logger.trace(`Received message chunk: ${data.length} bytes`);
+      messageBuffer = Buffer.concat([messageBuffer, data]);
 
-      if (type === MESSAGE_TYPE_DATA) {
-        if (payload.toString() === 'CLOSE') {
-          logger.debug(`Received CLOSE for uuid=${uuid}`);
-          if (clients[uuid]) {
-            clients[uuid].end();
-          }
-          return;
+      while (messageBuffer.length >= 4) {
+        const length = messageBuffer.readUInt32BE(0);
+        if (messageBuffer.length < 4 + length) {
+          logger.trace(`Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`);
+          break;
         }
 
-        const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+        const message = messageBuffer.slice(4, 4 + length);
+        messageBuffer = messageBuffer.slice(4 + length);
 
-        if (!client.write(payload)) {
-          logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
-          client.once('drain', () => {
-            logger.info(`TCP socket drained for uuid=${uuid}`);
-          });
-}
-        return;
+        const messageTunnelId = message.slice(0, 36).toString();
+        const uuid = message.slice(36, 72).toString();
+        const type = message.readUInt8(72);
+        const payload = message.slice(73);
 
-      } else if (type === MESSAGE_TYPE_APP_PONG) {
-        try {
-          const pongData = JSON.parse(payload.toString());
-          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
-          if (pongData.seq >= (pingSeq - 10)) {
-            lastPongTs = Date.now();
-            logger.trace(`App pong received: seq=${pongData.seq}`);
-          } else {
-            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
-          }
-        } catch (err) {
-          logger.error(`Invalid app pong format: ${err.message}`);
-        }
-        return;
-      } else if (payload.toString().includes('"type":"pong"')) {
-        // Fallback: detect pong by content
-        try {
-          const pongData = JSON.parse(payload.toString());
-          if (pongData.type === 'pong' && pongData.seq >= (pingSeq - 10)) {
-            lastPongTs = Date.now();
-            logger.trace(`App pong received (content detection): seq=${pongData.seq}`);
+        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+
+        if (type === MESSAGE_TYPE_DATA) {
+          if (payload.toString() === 'CLOSE') {
+            logger.debug(`Received CLOSE for uuid=${uuid}`);
+            if (clients[uuid]) {
+              clients[uuid].end();
+            }
             return;
           }
-        } catch (err) {
-          // Ignore parsing errors
+
+          const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+
+          if (!client.write(payload)) {
+            logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
+            client.once('drain', () => {
+              logger.info(`TCP socket drained for uuid=${uuid}`);
+            });
+          }
+          return;
+
+        } else if (type === MESSAGE_TYPE_APP_PONG) {
+          try {
+            const pongData = JSON.parse(payload.toString());
+            // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
+            if (pongData.seq >= (pingSeq - 10)) {
+              lastPongTs = Date.now();
+              logger.trace(`App pong received: seq=${pongData.seq}`);
+            } else {
+              logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+            }
+          } catch (err) {
+            logger.error(`Invalid app pong format: ${err.message}`);
+          }
+          return;
         }
       }
     });
