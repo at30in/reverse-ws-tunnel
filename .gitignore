@@ -14,3 +14,7 @@ coverage/
 .nyc_output
 # stryker temp files
 .stryker-tmp
+
+# Config files with sensitive data
+examples/client/.config.toml
+**/.config.toml
