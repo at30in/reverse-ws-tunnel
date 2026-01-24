@@ -5,6 +5,7 @@ const { HTTPParser, methods } = require('http-parser-js');
 const state = require('./state');
 const { MESSAGE_TYPE_DATA } = require('./constants');
 const { logger } = require('../utils/logger');
+const { buildMessageBuffer } = require('../client/utils');
 
 function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
   const wsPortKey = String(websocketPort);
@@ -60,7 +61,8 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
         isWebSocket = headers['upgrade']?.toLowerCase() === 'websocket';
 
         logger.trace(`Sending initial headers (${rawHeaders.length} bytes) to tunnel [${currentTunnelId}]`);
-        tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), Buffer.from(rawHeaders)]));
+        const message = buildMessageBuffer(currentTunnelId, uuid, MESSAGE_TYPE_DATA, rawHeaders);
+        tunnel.ws.send(message);
 
         if (isWebSocket) parser.close();
       };
@@ -70,7 +72,8 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
         if (tunnel?.ws && !isWebSocket) {
           const body = chunk.slice(offset, offset + length);
           logger.trace(`Forwarding body (${body.length} bytes) to tunnel [${currentTunnelId}]`);
-          tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), body]));
+          const message = buildMessageBuffer(currentTunnelId, uuid, MESSAGE_TYPE_DATA, body);
+          tunnel.ws.send(message);
         }
       };
 
@@ -91,7 +94,8 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
       if (isWebSocket) {
         if (tunnel?.ws) {
           logger.trace(`Forwarding WebSocket TCP data (${chunk.length} bytes) for tunnel [${currentTunnelId}]`);
-          tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), chunk]));
+          const message = buildMessageBuffer(currentTunnelId, uuid, MESSAGE_TYPE_DATA, chunk);
+          tunnel.ws.send(message);
         }
       } else {
         try {
@@ -107,7 +111,8 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
       const tunnel = state[wsPortKey]?.websocketTunnels?.[currentTunnelId];
       if (tunnel?.ws) {
         logger.debug(`TCP socket end for tunnel [${currentTunnelId}] (uuid: ${uuid})`);
-        tunnel.ws.send(Buffer.concat([uuidBuffer, Buffer.from([MESSAGE_TYPE_DATA]), Buffer.from('CLOSE')]));
+        const message = buildMessageBuffer(currentTunnelId, uuid, MESSAGE_TYPE_DATA, 'CLOSE');
+        tunnel.ws.send(message);
       }
     });
 
