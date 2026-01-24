@@ -78,28 +78,12 @@ function connectWebSocket(config) {
       ws.send(message);
     });
 
-    let messageBuffer = Buffer.alloc(0);
-    
-    ws.on('message', (chunk) => {
-      logger.trace(`Received message chunk: ${chunk.length} bytes`);
-      messageBuffer = Buffer.concat([messageBuffer, chunk]);
+    ws.on('message', (data) => {
+      const uuid = data.slice(0, 36).toString();
+      const type = data.readUInt8(36);
+      const payload = data.slice(37);
 
-      while (messageBuffer.length >= 4) {
-        const length = messageBuffer.readUInt32BE(0);
-        if (messageBuffer.length < 4 + length) {
-          logger.trace(`Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`);
-          break;
-        }
-
-        const message = messageBuffer.slice(4, 4 + length);
-        messageBuffer = messageBuffer.slice(4 + length);
-
-        const messageTunnelId = message.slice(0, 36).toString();
-        const uuid = message.slice(36, 72).toString();
-        const type = message.readUInt8(72);
-        const payload = message.slice(73);
-
-        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length} (expected ${length})`);
+      logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
 
       if (type === MESSAGE_TYPE_DATA) {
         if (payload.toString() === 'CLOSE') {
@@ -134,10 +118,20 @@ function connectWebSocket(config) {
           logger.error(`Invalid app pong format: ${err.message}`);
         }
         return;
-      } else {
-        logger.debug(`Unknown message type: ${type} for uuid=${uuid}`);
+      } else if (type === MESSAGE_TYPE_APP_PONG) {
+        try {
+          const pongData = JSON.parse(payload.toString());
+          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
+          if (pongData.seq >= (pingSeq - 10)) {
+            lastPongTs = Date.now();
+            logger.trace(`App pong received: seq=${pongData.seq}`);
+          } else {
+            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+          }
+        } catch (err) {
+          logger.error(`Invalid app pong format: ${err.message}`);
+        }
         return;
-      }
       }
     });
 
