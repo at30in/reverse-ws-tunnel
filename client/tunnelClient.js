@@ -84,22 +84,44 @@ function connectWebSocket(config) {
       logger.trace(`Received message chunk: ${data.length} bytes`);
       messageBuffer = Buffer.concat([messageBuffer, data]);
 
-      while (messageBuffer.length >= 4) {
-        const length = messageBuffer.readUInt32BE(0);
-        if (messageBuffer.length < 4 + length) {
-          logger.trace(`Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`);
-          break;
+      while (messageBuffer.length > 0) {
+        // Try new format (with length prefix) first
+        if (messageBuffer.length >= 4) {
+          const potentialLength = messageBuffer.readUInt32BE(0);
+          // If the length looks reasonable and we have enough data, parse as new format
+          if (potentialLength < 100000 && messageBuffer.length >= 4 + potentialLength) {
+            const message = messageBuffer.slice(4, 4 + potentialLength);
+            messageBuffer = messageBuffer.slice(4 + potentialLength);
+            
+            const messageTunnelId = message.slice(0, 36).toString();
+            const uuid = message.slice(36, 72).toString();
+            const type = message.readUInt8(72);
+            const payload = message.slice(73);
+
+            logger.trace(`Received WS message (new format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
+            handleMessage(uuid, type, payload);
+            continue;
+          }
         }
 
-        const message = messageBuffer.slice(4, 4 + length);
-        messageBuffer = messageBuffer.slice(4 + length);
+        // Fallback to old format (no length prefix)
+        if (messageBuffer.length >= 37) {
+          const uuid = messageBuffer.slice(0, 36).toString();
+          const type = messageBuffer.readUInt8(36);
+          const payload = messageBuffer.slice(37);
 
-        const messageTunnelId = message.slice(0, 36).toString();
-        const uuid = message.slice(36, 72).toString();
-        const type = message.readUInt8(72);
-        const payload = message.slice(73);
+          logger.trace(`Received WS message (old format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
+          handleMessage(uuid, type, payload);
+          messageBuffer = Buffer.alloc(0); // Clear buffer after old format message
+          break;
+        } else {
+          // Not enough data for old format, wait for more
+          break;
+        }
+      }
+    });
 
-        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+    function handleMessage(uuid, type, payload) {
 
         if (type === MESSAGE_TYPE_DATA) {
           if (payload.toString() === 'CLOSE') {
@@ -136,7 +158,44 @@ function connectWebSocket(config) {
           return;
         }
       }
-    });
+    }
+
+    function handleMessage(uuid, type, payload) {
+      if (type === MESSAGE_TYPE_DATA) {
+        if (payload.toString() === 'CLOSE') {
+          logger.debug(`Received CLOSE for uuid=${uuid}`);
+          if (clients[uuid]) {
+            clients[uuid].end();
+          }
+          return;
+        }
+
+        const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+
+        if (!client.write(payload)) {
+          logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
+          client.once('drain', () => {
+            logger.info(`TCP socket drained for uuid=${uuid}`);
+          });
+        }
+        return;
+
+      } else if (type === MESSAGE_TYPE_APP_PONG) {
+        try {
+          const pongData = JSON.parse(payload.toString());
+          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
+          if (pongData.seq >= (pingSeq - 10)) {
+            lastPongTs = Date.now();
+            logger.trace(`App pong received: seq=${pongData.seq}`);
+          } else {
+            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+          }
+        } catch (err) {
+          logger.error(`Invalid app pong format: ${err.message}`);
+        }
+        return;
+      }
+    }
 
     ws.on('close', () => {
       logger.warn('WebSocket connection closed. Cleaning up clients.');
