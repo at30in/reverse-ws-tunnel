@@ -79,9 +79,10 @@ function connectWebSocket(config) {
     });
 
     ws.on('message', (data) => {
-      const uuid = data.slice(0, 36).toString();
-      const type = data.readUInt8(36);
-      const payload = data.slice(37);
+      const tunnelId = data.slice(0, 36).toString();
+      const uuid = data.slice(36, 72).toString();
+      const type = data.readUInt8(72);
+      const payload = data.slice(73);
 
       logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
 
