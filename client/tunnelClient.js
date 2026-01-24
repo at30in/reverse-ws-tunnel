@@ -109,6 +109,14 @@ function connectWebSocket(config) {
 
         const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
 
+        if (!client.write(payload)) {
+          logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
+          client.once('drain', () => {
+            logger.info(`TCP socket drained for uuid=${uuid}`);
+          });
+        }
+        return;
+
       } else if (type === MESSAGE_TYPE_APP_PONG) {
         try {
           const pongData = JSON.parse(payload.toString());
