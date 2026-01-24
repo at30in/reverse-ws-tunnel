@@ -109,13 +109,7 @@ function connectWebSocket(config) {
         } catch (err) {
           logger.error(`Invalid app pong format: ${err.message}`);
         }
-
-        if (!client.write(payload)) {
-          logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
-          client.once('drain', () => {
-            logger.info(`TCP socket drained for uuid=${uuid}`);
-          });
-        }
+        return;
       }
     });
 
