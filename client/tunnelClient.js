@@ -86,7 +86,10 @@ function connectWebSocket(config) {
 
       while (messageBuffer.length >= 4) {
         const length = messageBuffer.readUInt32BE(0);
-        if (messageBuffer.length < 4 + length) break;
+        if (messageBuffer.length < 4 + length) {
+          logger.trace(`Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`);
+          break;
+        }
 
         const message = messageBuffer.slice(4, 4 + length);
         messageBuffer = messageBuffer.slice(4 + length);
@@ -96,7 +99,7 @@ function connectWebSocket(config) {
         const type = message.readUInt8(72);
         const payload = message.slice(73);
 
-        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length} (expected ${length})`);
 
       if (type === MESSAGE_TYPE_DATA) {
         if (payload.toString() === 'CLOSE') {
@@ -130,6 +133,9 @@ function connectWebSocket(config) {
         } catch (err) {
           logger.error(`Invalid app pong format: ${err.message}`);
         }
+        return;
+      } else {
+        logger.debug(`Unknown message type: ${type} for uuid=${uuid}`);
         return;
       }
       }
