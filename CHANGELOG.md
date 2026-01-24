@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.9] - 2026-01-24
+
+### 🐛 Bug Fixes
+- **Message Format Standardization**: Fixed inconsistent message formats between server components causing parsing errors
+- **Ping/Pong Reliability**: Resolved critical issue where application-level heartbeat failed during data transfer
+- **Connection Stability**: Fixed client timeouts and disconnections when handling large data flows
+
+### 🔧 Technical Improvements  
+- **Unified Message Protocol**: All server messages now use consistent `buildMessageBuffer` format
+  - `tcpServer.js` updated to use `buildMessageBuffer` instead of manual concatenation
+  - Eliminated mixed format messages (old vs new format confusion)
+- **Simplified Client Architecture**: Removed complex hybrid parsing logic
+  - Client now uses single, consistent message format with proper buffering
+  - Improved reliability and maintainability
+- **Enhanced Buffer Management**: Fixed message buffering and parsing reliability issues
+  - Proper length prefix handling for all message types
+  - Resolved incorrect length reading causing buffer corruption
+
+### 🏗️ Internal Changes
+- Standardized all WebSocket message creation across server components
+- Simplified client message parsing from dual-format to single-format approach
+- Improved error handling and debugging for message parsing failures
+
+---
+
 ## [1.0.8] - 2026-01-21
 
 ### Features
@@ -106,6 +131,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+[1.0.9]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.5...v1.0.6

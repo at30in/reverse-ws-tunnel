@@ -30,6 +30,20 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 
 ---
 
+## ✨ v1.0.9 - What's New
+
+### 🐛 Bug Fixes
+- **Message Format Standardization**: Fixed inconsistent message formats between server components
+- **Ping/Pong Reliability**: Resolved issues with application-level heartbeat failing during data transfer
+- **Connection Stability**: Improved connection handling and reduced timeout issues
+
+### 🔧 Technical Improvements
+- **Unified Message Protocol**: All server messages now use consistent `buildMessageBuffer` format
+- **Simplified Client Architecture**: Removed hybrid parsing logic for better maintainability
+- **Enhanced Buffer Management**: Improved message buffering and parsing reliability
+
+---
+
 ## 📦 Installation
 
 ```bash
