@@ -78,13 +78,25 @@ function connectWebSocket(config) {
       ws.send(message);
     });
 
-    ws.on('message', (data) => {
-      const tunnelId = data.slice(0, 36).toString();
-      const uuid = data.slice(36, 72).toString();
-      const type = data.readUInt8(72);
-      const payload = data.slice(73);
+    let messageBuffer = Buffer.alloc(0);
+    
+    ws.on('message', (chunk) => {
+      logger.trace(`Received message chunk: ${chunk.length} bytes`);
+      messageBuffer = Buffer.concat([messageBuffer, chunk]);
 
-      logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+      while (messageBuffer.length >= 4) {
+        const length = messageBuffer.readUInt32BE(0);
+        if (messageBuffer.length < 4 + length) break;
+
+        const message = messageBuffer.slice(4, 4 + length);
+        messageBuffer = messageBuffer.slice(4 + length);
+
+        const messageTunnelId = message.slice(0, 36).toString();
+        const uuid = message.slice(36, 72).toString();
+        const type = message.readUInt8(72);
+        const payload = message.slice(73);
+
+        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
 
       if (type === MESSAGE_TYPE_DATA) {
         if (payload.toString() === 'CLOSE') {
@@ -111,6 +123,7 @@ function connectWebSocket(config) {
           logger.error(`Invalid app pong format: ${err.message}`);
         }
         return;
+      }
       }
     });
 
