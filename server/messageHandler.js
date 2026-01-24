@@ -2,6 +2,7 @@ const state = require('./state');
 const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA, MESSAGE_TYPE_APP_PING, MESSAGE_TYPE_APP_PONG } = require('./constants');
 const { startTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
+const { buildMessageBuffer } = require('../client/utils');
 
 /**
  * Handles a parsed WebSocket message.
