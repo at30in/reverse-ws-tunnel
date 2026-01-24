@@ -79,11 +79,33 @@ function connectWebSocket(config) {
     });
 
     ws.on('message', (data) => {
-      const uuid = data.slice(0, 36).toString();
-      const type = data.readUInt8(36);
-      const payload = data.slice(37);
-
-      logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+      // Check if this might be a pong message (starts with length prefix)
+      let uuid, type, payload;
+      
+      if (data.length >= 4) {
+        const potentialLength = data.readUInt32BE(0);
+        // If it looks like a length prefix and the total size matches, parse as new format
+        if (potentialLength < 100000 && data.length === 4 + potentialLength) {
+          const message = data.slice(4);
+          const messageTunnelId = message.slice(0, 36).toString();
+          uuid = message.slice(36, 72).toString();
+          type = message.readUInt8(72);
+          payload = message.slice(73);
+          logger.trace(`Received WS message (new format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
+        } else {
+          // Old format
+          uuid = data.slice(0, 36).toString();
+          type = data.readUInt8(36);
+          payload = data.slice(37);
+          logger.trace(`Received WS message (old format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
+        }
+      } else {
+        // Too small, use old format
+        uuid = data.slice(0, 36).toString();
+        type = data.readUInt8(36);
+        payload = data.slice(37);
+        logger.trace(`Received WS message (old format) for uuid=${uuid}, type=${type}, length=${payload.length}`);
+      }
 
       if (type === MESSAGE_TYPE_DATA) {
         if (payload.toString() === 'CLOSE') {
@@ -101,7 +123,7 @@ function connectWebSocket(config) {
           client.once('drain', () => {
             logger.info(`TCP socket drained for uuid=${uuid}`);
           });
-        }
+}
         return;
 
       } else if (type === MESSAGE_TYPE_APP_PONG) {
@@ -118,20 +140,18 @@ function connectWebSocket(config) {
           logger.error(`Invalid app pong format: ${err.message}`);
         }
         return;
-      } else if (type === MESSAGE_TYPE_APP_PONG) {
+      } else if (payload.toString().includes('"type":"pong"')) {
+        // Fallback: detect pong by content
         try {
           const pongData = JSON.parse(payload.toString());
-          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
-          if (pongData.seq >= (pingSeq - 10)) {
+          if (pongData.type === 'pong' && pongData.seq >= (pingSeq - 10)) {
             lastPongTs = Date.now();
-            logger.trace(`App pong received: seq=${pongData.seq}`);
-          } else {
-            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+            logger.trace(`App pong received (content detection): seq=${pongData.seq}`);
+            return;
           }
         } catch (err) {
-          logger.error(`Invalid app pong format: ${err.message}`);
+          // Ignore parsing errors
         }
-        return;
       }
     });
 
