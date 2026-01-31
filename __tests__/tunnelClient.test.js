@@ -38,9 +38,12 @@ describe('connectWebSocket', () => {
   beforeEach(() => {
     mockWs = {
       on: jest.fn(),
+      once: jest.fn(),
       send: jest.fn(),
       ping: jest.fn(),
       terminate: jest.fn(),
+      readyState: WebSocket.OPEN,
+      OPEN: WebSocket.OPEN,
     };
     WebSocket.mockReturnValue(mockWs);
 
@@ -70,7 +73,12 @@ describe('connectWebSocket', () => {
     const openCallback = mockWs.on.mock.calls.find(call => call[0] === 'open')[1];
     openCallback();
 
-    expect(buildMessageBuffer).toHaveBeenCalledWith('test-tunnel', expect.any(String), 0x01, expect.any(String));
+    expect(buildMessageBuffer).toHaveBeenCalledWith(
+      'test-tunnel',
+      expect.any(String),
+      0x01,
+      expect.any(String)
+    );
     expect(mockWs.send).toHaveBeenCalled();
   });
 
@@ -79,24 +87,40 @@ describe('connectWebSocket', () => {
   // Client doesn't create TCP connections - proxy server does
 
   it('should close TCP connection on CLOSE message', () => {
-    const config = { tunnelId: 'test-tunnel', wsUrl: 'ws://test.com', targetUrl: 'http://localhost:3000', targetPort: 3000 };
+    const config = {
+      tunnelId: 'test-tunnel',
+      wsUrl: 'ws://test.com',
+      targetUrl: 'http://localhost:3000',
+      targetPort: 3000,
+    };
     connectWebSocket(config);
 
-    // First, create a connection
+    const openCallback = mockWs.on.mock.calls.find(call => call[0] === 'open')[1];
+    openCallback();
+
+    // First, create a connection by sending data
     const messageCallback = mockWs.on.mock.calls.find(call => call[0] === 'message')[1];
+    const dataPayload = Buffer.from('some data');
     const openMessage = Buffer.concat([
-      Buffer.from('test-uuid'.padEnd(36, ' ')),
-      Buffer.from([0x02]),
-      Buffer.from('some data'),
+      Buffer.alloc(4), // length placeholder
+      Buffer.from('test-tunnel'.padEnd(36, ' ')), // tunnelId
+      Buffer.from('test-uuid'.padEnd(36, ' ')), // uuid
+      Buffer.from([0x02]), // type = DATA
+      dataPayload,
     ]);
+    openMessage.writeUInt32BE(36 + 36 + 1 + dataPayload.length, 0);
     messageCallback(openMessage);
 
     // Then, send a CLOSE message
+    const closePayload = Buffer.from('CLOSE');
     const closeMessage = Buffer.concat([
-      Buffer.from('test-uuid'.padEnd(36, ' ')),
-      Buffer.from([0x02]),
-      Buffer.from('CLOSE'),
+      Buffer.alloc(4), // length placeholder
+      Buffer.from('test-tunnel'.padEnd(36, ' ')), // tunnelId
+      Buffer.from('test-uuid'.padEnd(36, ' ')), // uuid (same as before)
+      Buffer.from([0x02]), // type = DATA
+      closePayload,
     ]);
+    closeMessage.writeUInt32BE(36 + 36 + 1 + closePayload.length, 0);
     messageCallback(closeMessage);
 
     expect(mockTcpSocket.end).toHaveBeenCalled();

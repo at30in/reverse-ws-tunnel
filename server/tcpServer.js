@@ -11,7 +11,7 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
   const wsPortKey = String(websocketPort);
   const tcpPortKey = String(port);
 
-  const server = net.createServer((socket) => {
+  const server = net.createServer(socket => {
     const uuid = uuidv4();
     const uuidBuffer = Buffer.from(uuid);
     let currentTunnelId = null;
@@ -22,7 +22,7 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
     function createParser() {
       const parser = new HTTPParser(HTTPParser.REQUEST);
 
-      parser[HTTPParser.kOnHeadersComplete] = (info) => {
+      parser[HTTPParser.kOnHeadersComplete] = info => {
         const headers = info.headers.reduce((acc, val, i, arr) => {
           if (i % 2 === 0) acc[val.toLowerCase()] = arr[i + 1];
           return acc;
@@ -60,7 +60,9 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
 
         isWebSocket = headers['upgrade']?.toLowerCase() === 'websocket';
 
-        logger.trace(`Sending initial headers (${rawHeaders.length} bytes) to tunnel [${currentTunnelId}]`);
+        logger.trace(
+          `Sending initial headers (${rawHeaders.length} bytes) to tunnel [${currentTunnelId}]`
+        );
         const message = buildMessageBuffer(currentTunnelId, uuid, MESSAGE_TYPE_DATA, rawHeaders);
         tunnel.ws.send(message);
 
@@ -89,11 +91,13 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
 
     let currentParser = createParser();
 
-    socket.on('data', (chunk) => {
+    socket.on('data', chunk => {
       const tunnel = state[wsPortKey]?.websocketTunnels?.[currentTunnelId];
       if (isWebSocket) {
         if (tunnel?.ws) {
-          logger.trace(`Forwarding WebSocket TCP data (${chunk.length} bytes) for tunnel [${currentTunnelId}]`);
+          logger.trace(
+            `Forwarding WebSocket TCP data (${chunk.length} bytes) for tunnel [${currentTunnelId}]`
+          );
           const message = buildMessageBuffer(currentTunnelId, uuid, MESSAGE_TYPE_DATA, chunk);
           tunnel.ws.send(message);
         }
@@ -117,11 +121,14 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
     });
 
     socket.on('close', () => {
-      const deleted = delete state[wsPortKey]?.websocketTunnels?.[currentTunnelId]?.tcpConnections?.[uuid];
-      logger.debug(`TCP socket closed [${uuid}] for tunnel [${currentTunnelId}], connection ${deleted ? 'removed' : 'not found'}`);
+      const deleted =
+        delete state[wsPortKey]?.websocketTunnels?.[currentTunnelId]?.tcpConnections?.[uuid];
+      logger.debug(
+        `TCP socket closed [${uuid}] for tunnel [${currentTunnelId}], connection ${deleted ? 'removed' : 'not found'}`
+      );
     });
 
-    socket.on('error', (err) => {
+    socket.on('error', err => {
       logger.error(`Socket error on tunnel [${currentTunnelId}], uuid [${uuid}]:`, err);
       delete state[wsPortKey]?.websocketTunnels?.[currentTunnelId]?.tcpConnections?.[uuid];
     });
@@ -134,7 +141,7 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
     logger.info(`TCP server listening on port ${port} for websocketPort ${websocketPort}`);
   });
 
-  server.on('error', (err) => {
+  server.on('error', err => {
     logger.error(`TCP server error on port ${port}:`, err);
   });
 }

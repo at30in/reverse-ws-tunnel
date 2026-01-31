@@ -5,5 +5,5 @@ const utils = require('./utils');
 module.exports = {
   ...server,
   ...client,
-  ...utils
+  ...utils,
 };

@@ -1,5 +1,10 @@
 const state = require('./state');
-const { MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA, MESSAGE_TYPE_APP_PING, MESSAGE_TYPE_APP_PONG } = require('./constants');
+const {
+  MESSAGE_TYPE_CONFIG,
+  MESSAGE_TYPE_DATA,
+  MESSAGE_TYPE_APP_PING,
+  MESSAGE_TYPE_APP_PONG,
+} = require('./constants');
 const { startTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
 const { buildMessageBuffer } = require('../client/utils');
@@ -49,7 +54,9 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
 
       const portKey = String(TUNNEL_ENTRY_PORT);
       if (!state[port][portKey]) {
-        logger.info(`Starting new TCP server on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`);
+        logger.info(
+          `Starting new TCP server on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`
+        );
         state[port][portKey] = {};
         state[port][portKey] = {
           tcpServer: startTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port),
@@ -60,7 +67,9 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
 
       logger.info(`Tunnel [${tunnelId}] established successfully`);
     } catch (error) {
-      logger.error(`Failed to process MESSAGE_TYPE_CONFIG for tunnelId=${tunnelId}: ${error.message}`);
+      logger.error(
+        `Failed to process MESSAGE_TYPE_CONFIG for tunnelId=${tunnelId}: ${error.message}`
+      );
     }
 
     return;
@@ -72,7 +81,7 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
       const pingData = JSON.parse(payload.toString());
       const pongData = JSON.stringify({
         type: 'pong',
-        seq: pingData.seq
+        seq: pingData.seq,
       });
 
       const pongMessage = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_APP_PONG, pongData);

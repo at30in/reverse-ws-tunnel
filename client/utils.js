@@ -12,7 +12,8 @@ function buildMessageBuffer(tunnelId, uuid, type, payload) {
   const typeBuffer = Buffer.from([type]);
   const payloadBuffer = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
 
-  const totalLength = tunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
+  const totalLength =
+    tunnelBuffer.length + uuidBuffer.length + typeBuffer.length + payloadBuffer.length;
   const lengthBuffer = Buffer.alloc(4);
   lengthBuffer.writeUInt32BE(totalLength);
 

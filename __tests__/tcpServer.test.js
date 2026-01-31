@@ -36,7 +36,7 @@ describe('startTCPServer', () => {
     };
 
     state['8080'] = {
-      '3000': {},
+      3000: {},
       websocketTunnels: {
         'test-tunnel': {
           ws: mockWs,
@@ -66,7 +66,7 @@ describe('startTCPServer', () => {
     expect(mockSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
   });
 
-  it('should destroy socket for invalid tunnel ID', (done) => {
+  it('should destroy socket for invalid tunnel ID', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
     const connectionCallback = net.createServer.mock.calls[0][0];
     connectionCallback(mockSocket);
@@ -83,7 +83,7 @@ describe('startTCPServer', () => {
     }, 100);
   });
 
-  it('should forward data to the correct tunnel', (done) => {
+  it('should forward data to the correct tunnel', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
     const connectionCallback = net.createServer.mock.calls[0][0];
     connectionCallback(mockSocket);
@@ -101,7 +101,7 @@ describe('startTCPServer', () => {
     }, 100);
   });
 
-  it('should extract tunnel ID from cookie', (done) => {
+  it('should extract tunnel ID from cookie', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
     const connectionCallback = net.createServer.mock.calls[0][0];
     connectionCallback(mockSocket);
@@ -117,7 +117,7 @@ describe('startTCPServer', () => {
     }, 100);
   });
 
-  it('should handle WebSocket upgrade requests', (done) => {
+  it('should handle WebSocket upgrade requests', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
     const connectionCallback = net.createServer.mock.calls[0][0];
     connectionCallback(mockSocket);
@@ -136,7 +136,7 @@ describe('startTCPServer', () => {
     }, 100);
   });
 
-  it('should send CLOSE message on socket end', (done) => {
+  it('should send CLOSE message on socket end', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
     const connectionCallback = net.createServer.mock.calls[0][0];
     connectionCallback(mockSocket);

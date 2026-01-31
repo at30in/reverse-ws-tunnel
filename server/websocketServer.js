@@ -22,7 +22,9 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
   state[portKey].webSocketServer = new WebSocket.Server({ port, host, path });
 
   state[portKey].webSocketServer.on('listening', () => {
-    logger.info(`WebSocket server listening on port ${port}${host ? ` (host: ${host})` : ''}${path ? `, path: ${path}` : ''}`);
+    logger.info(
+      `WebSocket server listening on port ${port}${host ? ` (host: ${host})` : ''}${path ? `, path: ${path}` : ''}`
+    );
   });
 
   state[portKey].webSocketServer.on('connection', (ws, req) => {
@@ -41,7 +43,9 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
 
     const interval = setInterval(() => {
       if (!ws.isAlive) {
-        logger.warn(`No pong received from client on tunnel [${tunnelId || 'unknown'}], terminating.`);
+        logger.warn(
+          `No pong received from client on tunnel [${tunnelId || 'unknown'}], terminating.`
+        );
         return ws.terminate();
       }
       ws.isAlive = false;
@@ -51,7 +55,7 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
       }
     }, PING_INTERVAL);
 
-    ws.on('message', (chunk) => {
+    ws.on('message', chunk => {
       logger.trace(`Received message chunk: ${chunk.length} bytes`);
       buffer = Buffer.concat([buffer, chunk]);
 
@@ -67,15 +71,22 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
         const type = message.readUInt8(72);
         const payload = message.slice(73);
 
-        logger.trace(`Parsed message - tunnelId: ${messageTunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`);
+        logger.trace(
+          `Parsed message - tunnelId: ${messageTunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`
+        );
 
         // Check for duplicate tunnelId on first message (when tunnelId is not yet set)
         if (!tunnelId && messageTunnelId) {
           const existingTunnel = state[portKey]?.websocketTunnels?.[messageTunnelId];
           if (existingTunnel && existingTunnel.ws && existingTunnel.ws !== ws) {
             // Check if the existing WebSocket is still open
-            if (existingTunnel.ws.readyState === WebSocket.OPEN || existingTunnel.ws.readyState === WebSocket.CONNECTING) {
-              logger.error(`Tunnel [${messageTunnelId}] already exists with an active connection. Rejecting new connection.`);
+            if (
+              existingTunnel.ws.readyState === WebSocket.OPEN ||
+              existingTunnel.ws.readyState === WebSocket.CONNECTING
+            ) {
+              logger.error(
+                `Tunnel [${messageTunnelId}] already exists with an active connection. Rejecting new connection.`
+              );
 
               // Assign tunnelId before closing so cleanup logs the correct value
               tunnelId = messageTunnelId;
@@ -84,7 +95,9 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
               ws.close(1008, `Duplicate tunnelId: ${messageTunnelId}`);
               return;
             } else {
-              logger.info(`Existing tunnel [${messageTunnelId}] has a closed connection. Allowing new connection.`);
+              logger.info(
+                `Existing tunnel [${messageTunnelId}] has a closed connection. Allowing new connection.`
+              );
             }
           }
           tunnelId = messageTunnelId;
@@ -104,7 +117,9 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
           delete state[portKey].websocketTunnels[tunnelId];
           logger.debug(`Removed tunnel [${tunnelId}] from state`);
         } else {
-          logger.debug(`Tunnel [${tunnelId}] not removed - this was a duplicate/rejected connection`);
+          logger.debug(
+            `Tunnel [${tunnelId}] not removed - this was a duplicate/rejected connection`
+          );
         }
       } else {
         logger.debug(`No tunnelId assigned yet, nothing to remove from state`);
@@ -126,13 +141,13 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
       cleanup('close');
     });
 
-    ws.on('error', (err) => {
+    ws.on('error', err => {
       logger.error(`WebSocket error on tunnel [${tunnelId || 'unknown'}]:`, err);
       cleanup('error');
     });
   });
 
-  state[portKey].webSocketServer.on('error', (err) => {
+  state[portKey].webSocketServer.on('error', err => {
     logger.error('WebSocket server error:', err);
   });
 

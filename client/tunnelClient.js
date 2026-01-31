@@ -6,7 +6,6 @@ const { buildMessageBuffer } = require('./utils');
 const { logger } = require('../utils/logger');
 const packageJson = require('../package.json');
 
-const RECONNECT_INTERVAL = 5000;
 const MESSAGE_TYPE_CONFIG = 0x01;
 const MESSAGE_TYPE_DATA = 0x02;
 const MESSAGE_TYPE_APP_PING = 0x03;
@@ -23,7 +22,17 @@ const RECONNECT_BACKOFF = [1000, 2000, 5000, 10000, 30000]; // Backoff progressi
  * @param {Object} config - Configuration for tunnel.
  */
 function connectWebSocket(config) {
-  const { wsUrl, tunnelId, targetUrl, targetPort, tunnelEntryUrl, tunnelEntryPort, headers, environment, autoReconnect = true } = config;
+  const {
+    wsUrl,
+    tunnelId,
+    targetUrl,
+    targetPort,
+    tunnelEntryUrl,
+    tunnelEntryPort,
+    headers,
+    environment,
+    autoReconnect = true,
+  } = config;
 
   const eventEmitter = new EventEmitter();
   let ws;
@@ -32,8 +41,6 @@ function connectWebSocket(config) {
   let healthMonitor;
   let isClosed = false;
   let reconnectAttempt = 0;
-  let pingSeq = 0;
-  let lastPongTs = Date.now();
 
   if (!tunnelId) {
     throw new Error(`Missing mandatory tunnelId`);
@@ -43,40 +50,58 @@ function connectWebSocket(config) {
     if (isClosed) return;
 
     try {
-      const headersParsed = headers || '{}';
+      // Parse headers - handle both string and object formats
+      let headersParsed = {};
+      if (headers) {
+        if (typeof headers === 'string') {
+          try {
+            headersParsed = JSON.parse(headers);
+          } catch (e) {
+            logger.warn(`Failed to parse headers string: ${headers}`);
+          }
+        } else if (typeof headers === 'object') {
+          headersParsed = headers;
+        }
+      }
       logger.debug(`Parsed headers: ${JSON.stringify(headersParsed)}`);
       logger.debug(`Try to connect to: ${wsUrl}`);
       ws = new WebSocket(wsUrl, { headers: headersParsed });
       logger.debug(`Connection: ${wsUrl}`);
     } catch (error) {
-      logger.error('Malformed headers:', error);
+      logger.error('Failed to create WebSocket connection:', error);
       return;
     }
 
     // PingState condiviso tra heartbeat e message handler
     // Reset completo dello stato per ogni connessione
-    const pingState = { 
-      pingSeq: 0, 
-      lastPongTs: Date.now() 
+    const pingState = {
+      pingSeq: 0,
+      lastPongTs: Date.now(),
     };
     const pingStateCallbacks = {
-      pingSeq: () => pingState.pingSeq, 
+      pingSeq: () => pingState.pingSeq,
       incPingSeq: () => pingState.pingSeq++,
       lastPongTs: () => pingState.lastPongTs,
-      setLastPongTs: (ts) => pingState.lastPongTs = ts
+      setLastPongTs: ts => (pingState.lastPongTs = ts),
     };
 
     ws.on('open', () => {
       logger.info(`Connected to WebSocket server ${wsUrl}`);
-      logger.warn(`WS tunnel config sent: TARGET_PORT=${targetPort}, ENTRY_PORT=${tunnelEntryPort}`);
+      logger.warn(
+        `WS tunnel config sent: TARGET_PORT=${targetPort}, ENTRY_PORT=${tunnelEntryPort}`
+      );
+
+      // Reset reconnect attempt on successful connection
+      reconnectAttempt = 0;
+
       eventEmitter.emit('connected');
       ({ pingInterval } = heartBeat(ws));
 
       // Avviare heartbeat applicativo
       appPingInterval = startAppHeartbeat(ws, tunnelId, pingStateCallbacks);
-      healthMonitor = startHealthMonitor(ws, tunnelId, { 
-        lastPongTs: () => pingState.lastPongTs, 
-        setLastPongTs: (ts) => pingState.lastPongTs = ts
+      healthMonitor = startHealthMonitor(ws, tunnelId, {
+        lastPongTs: () => pingState.lastPongTs,
+        setLastPongTs: ts => (pingState.lastPongTs = ts),
       });
 
       const uuid = uuidv4();
@@ -89,33 +114,50 @@ function connectWebSocket(config) {
         agentVersion: packageJson.version,
       };
 
-      const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_CONFIG, JSON.stringify(payload));
+      const message = buildMessageBuffer(
+        tunnelId,
+        uuid,
+        MESSAGE_TYPE_CONFIG,
+        JSON.stringify(payload)
+      );
       logger.debug(`Sending tunnel config [uuid=${uuid}]`);
       ws.send(message);
     });
 
     let messageBuffer = Buffer.alloc(0);
-    
-    ws.on('message', (data) => {
+
+    ws.on('message', data => {
       logger.trace(`Received message chunk: ${data.length} bytes`);
       messageBuffer = Buffer.concat([messageBuffer, data]);
 
       while (messageBuffer.length >= 4) {
         const length = messageBuffer.readUInt32BE(0);
         if (messageBuffer.length < 4 + length) {
-          logger.trace(`Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`);
+          logger.trace(
+            `Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`
+          );
           break;
         }
 
         const message = messageBuffer.slice(4, 4 + length);
         messageBuffer = messageBuffer.slice(4 + length);
 
-        const messageTunnelId = message.slice(0, 36).toString();
+        const messageTunnelId = message.slice(0, 36).toString().trim();
         const uuid = message.slice(36, 72).toString();
         const type = message.readUInt8(72);
         const payload = message.slice(73);
 
-        logger.trace(`Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`);
+        // Validate tunnelId matches expected tunnel
+        if (messageTunnelId !== tunnelId) {
+          logger.warn(
+            `Received message for wrong tunnel: ${messageTunnelId} (expected: ${tunnelId})`
+          );
+          return;
+        }
+
+        logger.trace(
+          `Received WS message for uuid=${uuid}, type=${type}, length=${payload.length}`
+        );
 
         if (type === MESSAGE_TYPE_DATA) {
           if (payload.toString() === 'CLOSE') {
@@ -126,7 +168,8 @@ function connectWebSocket(config) {
             return;
           }
 
-          const client = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+          const client =
+            clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
 
           if (!client.write(payload)) {
             logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
@@ -135,23 +178,22 @@ function connectWebSocket(config) {
             });
           }
           return;
-
-} else if (type === MESSAGE_TYPE_APP_PONG) {
-        try {
-          const pongData = JSON.parse(payload.toString());
-          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
-          if (pongData.seq >= (pingStateCallbacks.pingSeq() - 10)) {
-            // Aggiorna lastPongTs usando il callback
-            pingStateCallbacks.setLastPongTs(Date.now());
-            logger.trace(`App pong received: seq=${pongData.seq}`);
-          } else {
-            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+        } else if (type === MESSAGE_TYPE_APP_PONG) {
+          try {
+            const pongData = JSON.parse(payload.toString());
+            // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
+            if (pongData.seq >= pingStateCallbacks.pingSeq() - 10) {
+              // Aggiorna lastPongTs usando il callback
+              pingStateCallbacks.setLastPongTs(Date.now());
+              logger.trace(`App pong received: seq=${pongData.seq}`);
+            } else {
+              logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
+            }
+          } catch (err) {
+            logger.error(`Invalid app pong format: ${err.message}`);
           }
-        } catch (err) {
-          logger.error(`Invalid app pong format: ${err.message}`);
+          return;
         }
-        return;
-      }
       }
     });
 
@@ -169,13 +211,12 @@ function connectWebSocket(config) {
         delete clients[uuid];
       }
 
-      // Reset state on close for proper reconnection
-      pingSeq = 0;
-      lastPongTs = Date.now();
+      // Reset message buffer on close for proper reconnection
       messageBuffer = Buffer.alloc(0);
 
       if (!isClosed && autoReconnect) {
-        const delay = RECONNECT_BACKOFF[reconnectAttempt] || RECONNECT_BACKOFF[RECONNECT_BACKOFF.length - 1];
+        const delay =
+          RECONNECT_BACKOFF[reconnectAttempt] || RECONNECT_BACKOFF[RECONNECT_BACKOFF.length - 1];
         logger.info(`Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempt + 1})`);
         setTimeout(() => {
           reconnectAttempt = Math.min(reconnectAttempt + 1, RECONNECT_BACKOFF.length);
@@ -184,7 +225,7 @@ function connectWebSocket(config) {
       }
     });
 
-    ws.on('error', (err) => {
+    ws.on('error', err => {
       logger.error('WebSocket error:', err);
     });
   };
@@ -239,13 +280,13 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
     logger.info(`TCP connection established for uuid=${uuid}`);
   });
 
-  client.on('data', (data) => {
+  client.on('data', data => {
     logger.trace(`TCP data received for uuid=${uuid}, length=${data.length}`);
     const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_DATA, data);
     ws.send(message);
   });
 
-  client.on('error', (err) => {
+  client.on('error', err => {
     logger.error(`TCP error for uuid=${uuid}:`, err);
     client.destroy();
     delete clients[uuid];
@@ -270,7 +311,7 @@ function startAppHeartbeat(ws, tunnelId, pingState) {
       const pingData = JSON.stringify({
         type: 'ping',
         seq: currentPingSeq,
-        ts: Date.now()
+        ts: Date.now(),
       });
 
       const message = buildMessageBuffer(tunnelId, uuidv4(), MESSAGE_TYPE_APP_PING, pingData);
@@ -295,7 +336,8 @@ function startHealthMonitor(ws, tunnelId, pongState) {
   }, 5000); // Check every 5 seconds
 }
 
-function resetClients() { // for testing
+function resetClients() {
+  // for testing
   for (const key in clients) {
     delete clients[key];
   }

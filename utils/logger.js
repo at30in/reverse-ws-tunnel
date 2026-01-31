@@ -34,12 +34,12 @@ const logger = winston.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.printf((info) => {
+        winston.format.printf(info => {
           const contextPrefix = logContext ? `${logContext} | ` : '';
           // Get the raw level (before colorization)
           const rawLevel = info[Symbol.for('level')] || info.level || 'info';
           // Apply color to level and message separately
-           const colorizer = winston.format.colorize({ colors: customLevels.colors });
+          const colorizer = winston.format.colorize({ colors: customLevels.colors });
           const coloredLevel = colorizer.colorize(rawLevel, rawLevel);
           const coloredMessage = colorizer.colorize(rawLevel, `${contextPrefix}${info.message}`);
           return `[${info.timestamp}] ${coloredLevel}: ${coloredMessage}`;

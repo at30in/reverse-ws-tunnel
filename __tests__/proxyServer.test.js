@@ -68,14 +68,25 @@ describe('startHttpProxyServer', () => {
     startHttpProxyServer('http://target.com');
     const requestCallback = http.createServer.mock.calls[0][0];
     requestCallback(mockReq, mockRes);
-    expect(mockProxy.web).toHaveBeenCalledWith(mockReq, mockRes, expect.any(Object), expect.any(Function));
+    expect(mockProxy.web).toHaveBeenCalledWith(
+      mockReq,
+      mockRes,
+      expect.any(Object),
+      expect.any(Function)
+    );
   });
 
   it('should proxy WebSocket upgrade requests', () => {
     startHttpProxyServer('http://target.com');
     const upgradeCallback = mockServer.on.mock.calls.find(call => call[0] === 'upgrade')[1];
     upgradeCallback(mockReq, mockSocket, mockHead);
-    expect(mockProxy.ws).toHaveBeenCalledWith(mockReq, mockSocket, mockHead, expect.any(Object), expect.any(Function));
+    expect(mockProxy.ws).toHaveBeenCalledWith(
+      mockReq,
+      mockSocket,
+      mockHead,
+      expect.any(Object),
+      expect.any(Function)
+    );
   });
 
   it('should handle requests without targetUrl gracefully', () => {

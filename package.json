@@ -41,7 +41,9 @@
     "example:server:esm": "node examples/server/server-example.mjs",
     "example:client": "node examples/client/client-example.js",
     "example:client:esm": "node examples/client/client-example.mjs",
-    "example:webserver": "node examples/webserver/webserver-example.js"
+    "example:webserver": "node examples/webserver/webserver-example.js",
+    "format": "prettier --write \"**/*.js\" \"**/*.mjs\" \"**/*.cjs\"",
+    "format:check": "prettier --check \"**/*.js\" \"**/*.mjs\" \"**/*.cjs\""
   },
   "exports": {
     ".": {
@@ -78,6 +80,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
+    "prettier": "^3.8.1",
     "typescript": "^5.9.3"
   }
 }

@@ -12,7 +12,9 @@ describe('buildMessageBuffer', () => {
     const expectedLength = tunnelId.length + uuid.length + 1 + payload.length;
     expect(buffer.readUInt32BE(0)).toBe(expectedLength);
     expect(buffer.slice(4, 4 + tunnelId.length).toString()).toBe(tunnelId);
-    expect(buffer.slice(4 + tunnelId.length, 4 + tunnelId.length + uuid.length).toString()).toBe(uuid);
+    expect(buffer.slice(4 + tunnelId.length, 4 + tunnelId.length + uuid.length).toString()).toBe(
+      uuid
+    );
     expect(buffer.readUInt8(4 + tunnelId.length + uuid.length)).toBe(type);
     expect(buffer.slice(4 + tunnelId.length + uuid.length + 1).toString()).toBe(payload);
   });

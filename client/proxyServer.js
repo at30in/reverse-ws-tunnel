@@ -24,23 +24,34 @@ function startHttpProxyServer(targetUrl, allowInsecureCerts = false) {
       return res.end('Missing TARGET_URL');
     }
 
-    proxy.web(req, res, { target: targetUrl, changeOrigin: true, secure: !allowInsecureCerts }, (err) => {
-      logger.error('Proxy web error:', err);
-      if (!res.headersSent) {
-        res.writeHead(502);
-        res.end('Bad gateway');
-      } else {
-        res.end();
+    proxy.web(
+      req,
+      res,
+      { target: targetUrl, changeOrigin: true, secure: !allowInsecureCerts },
+      err => {
+        logger.error('Proxy web error:', err);
+        if (!res.headersSent) {
+          res.writeHead(502);
+          res.end('Bad gateway');
+        } else {
+          res.end();
+        }
       }
-    });
+    );
   });
 
   server.on('upgrade', (req, socket, head) => {
     logger.trace(`Incoming WebSocket upgrade: ${req.url}`);
-    proxy.ws(req, socket, head, { target: targetUrl, changeOrigin: false, secure: !allowInsecureCerts }, (err) => {
-      logger.error('Proxy WS upgrade error:', err);
-      socket.end();
-    });
+    proxy.ws(
+      req,
+      socket,
+      head,
+      { target: targetUrl, changeOrigin: false, secure: !allowInsecureCerts },
+      err => {
+        logger.error('Proxy WS upgrade error:', err);
+        socket.end();
+      }
+    );
   });
 
   proxy.on('error', (err, req, res) => {

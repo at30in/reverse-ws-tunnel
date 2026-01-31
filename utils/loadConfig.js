@@ -7,7 +7,9 @@ const TOML = require('@iarna/toml');
 
 function loadConfig(customPath) {
   const callerDir = require.main?.path || process.cwd();
-  const configPath = customPath ? path.join(customPath, FILE_CONFIG_NAME) : path.join(callerDir, FILE_CONFIG_NAME);
+  const configPath = customPath
+    ? path.join(customPath, FILE_CONFIG_NAME)
+    : path.join(callerDir, FILE_CONFIG_NAME);
 
   console.log({ configPath });
 
@@ -25,7 +27,9 @@ function loadConfig(customPath) {
       logger.warn(`⚠️ Failed to parse config.toml at ${configPath}: ${err.message}`);
     }
   } else {
-    logger.info(`ℹ️ No config.toml found at: ${configPath}, falling back to environment variables.`);
+    logger.info(
+      `ℹ️ No config.toml found at: ${configPath}, falling back to environment variables.`
+    );
   }
 
   const envConfig = {
@@ -33,7 +37,9 @@ function loadConfig(customPath) {
     wsUrl: process.env.WS_URL,
     targetUrl: process.env.TARGET_URL,
     tunnelEntryUrl: process.env.TUNNEL_ENTRY_URL,
-    tunnelEntryPort: process.env.TUNNEL_ENTRY_PORT ? Number(process.env.TUNNEL_ENTRY_PORT) : undefined,
+    tunnelEntryPort: process.env.TUNNEL_ENTRY_PORT
+      ? Number(process.env.TUNNEL_ENTRY_PORT)
+      : undefined,
     headers: process.env.HEADERS,
     allowInsicureCerts: process.env.ALLOW_INSICURE_CERTS === 'true',
     logLevel: process.env.LOG_LEVEL || 'info',

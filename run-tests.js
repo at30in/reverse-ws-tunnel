@@ -8,7 +8,14 @@ console.log('🧪 Running websocket-tunnel tests with proper cleanup...\n');
 // Set environment variables for testing
 process.env.NODE_ENV = 'test';
 
-const jestArgs = ['--config', 'jest.config.js', '--detectOpenHandles', '--forceExit', '--verbose', '--maxWorkers=1'];
+const jestArgs = [
+  '--config',
+  'jest.config.js',
+  '--detectOpenHandles',
+  '--forceExit',
+  '--verbose',
+  '--maxWorkers=1',
+];
 
 // Add any command line arguments passed to this script
 const additionalArgs = process.argv.slice(2);
@@ -28,7 +35,7 @@ testTimeout = setTimeout(() => {
   process.exit(1);
 }, 60000); // 60 seconds max
 
-jest.on('close', (code) => {
+jest.on('close', code => {
   clearTimeout(testTimeout);
 
   if (code === 0) {
@@ -43,7 +50,7 @@ jest.on('close', (code) => {
   }, 1000);
 });
 
-jest.on('error', (err) => {
+jest.on('error', err => {
   clearTimeout(testTimeout);
   console.error('\n❌ Failed to start Jest:', err);
   process.exit(1);
