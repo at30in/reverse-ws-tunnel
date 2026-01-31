@@ -30,7 +30,17 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 
 ---
 
-## ✨ v1.0.9 - What's New
+## ✨ v1.0.10 - What's New
+
+### 🔧 Code Quality & Developer Experience
+- **Code Cleanup**: Removed unused constants and redundant variables
+- **Input Validation**: Added tunnelId validation for incoming messages
+- **Code Formatting**: Added Prettier configuration for consistent code style
+- **Test Suite**: Reorganized tests, removed obsolete files, added new test coverage
+
+---
+
+## ✨ v1.0.9 - Previous Release
 
 ### 🐛 Bug Fixes
 - **Message Format Standardization**: Fixed inconsistent message formats between server components

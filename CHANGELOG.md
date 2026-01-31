@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.10] - 2026-01-31
+
+### 🔧 Code Quality Improvements
+- **Removed unused constants**: Eliminated `RECONNECT_INTERVAL` constant that was defined but never used
+- **Variable cleanup**: Removed redundant `pingSeq` and `lastPongTs` variables at function scope
+- **Connection state management**: Fixed `reconnectAttempt` to properly reset to 0 on successful connection
+- **Input validation**: Added `tunnelId` validation for incoming messages to ensure messages match expected tunnel
+- **Headers parsing**: Improved headers parsing to handle both string (JSON) and object formats correctly
+
+### 🎨 Development Experience
+- **Code formatting**: Added Prettier configuration with consistent formatting rules
+- **New npm scripts**: Added `format` and `format:check` scripts for code formatting
+- **Formatted codebase**: Applied consistent formatting across all JavaScript files
+
+### 🧪 Testing
+- **Removed obsolete tests**: Deleted 7 outdated test files with syntax errors and invalid logic
+- **New test suites**: Added `clientHeartbeat.test.js` and `clientMessages.test.js` for better coverage
+- **Updated existing tests**: Modified tests to match current code behavior and validation logic
+
+---
+
 ## [1.0.9] - 2026-01-24
 
 ### 🐛 Bug Fixes
@@ -131,6 +152,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+[1.0.10]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.6...v1.0.7
