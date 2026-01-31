@@ -53,6 +53,19 @@ function connectWebSocket(config) {
       return;
     }
 
+    // PingState condiviso tra heartbeat e message handler
+    // Reset completo dello stato per ogni connessione
+    const pingState = { 
+      pingSeq: 0, 
+      lastPongTs: Date.now() 
+    };
+    const pingStateCallbacks = {
+      pingSeq: () => pingState.pingSeq, 
+      incPingSeq: () => pingState.pingSeq++,
+      lastPongTs: () => pingState.lastPongTs,
+      setLastPongTs: (ts) => pingState.lastPongTs = ts
+    };
+
     ws.on('open', () => {
       logger.info(`Connected to WebSocket server ${wsUrl}`);
       logger.warn(`WS tunnel config sent: TARGET_PORT=${targetPort}, ENTRY_PORT=${tunnelEntryPort}`);
@@ -60,8 +73,11 @@ function connectWebSocket(config) {
       ({ pingInterval } = heartBeat(ws));
 
       // Avviare heartbeat applicativo
-      appPingInterval = startAppHeartbeat(ws, tunnelId, { pingSeq: () => pingSeq, incPingSeq: () => pingSeq++ });
-      healthMonitor = startHealthMonitor(ws, tunnelId, { lastPongTs: () => lastPongTs, setLastPongTs: (ts) => lastPongTs = ts });
+      appPingInterval = startAppHeartbeat(ws, tunnelId, pingStateCallbacks);
+      healthMonitor = startHealthMonitor(ws, tunnelId, { 
+        lastPongTs: () => pingState.lastPongTs, 
+        setLastPongTs: (ts) => pingState.lastPongTs = ts
+      });
 
       const uuid = uuidv4();
       const payload = {
@@ -120,21 +136,22 @@ function connectWebSocket(config) {
           }
           return;
 
-        } else if (type === MESSAGE_TYPE_APP_PONG) {
-          try {
-            const pongData = JSON.parse(payload.toString());
-            // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
-            if (pongData.seq >= (pingSeq - 10)) {
-              lastPongTs = Date.now();
-              logger.trace(`App pong received: seq=${pongData.seq}`);
-            } else {
-              logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
-            }
-          } catch (err) {
-            logger.error(`Invalid app pong format: ${err.message}`);
+} else if (type === MESSAGE_TYPE_APP_PONG) {
+        try {
+          const pongData = JSON.parse(payload.toString());
+          // Accetta solo pong con seq >= pingSeq - 10 (finestra di 10 ping)
+          if (pongData.seq >= (pingStateCallbacks.pingSeq() - 10)) {
+            // Aggiorna lastPongTs usando il callback
+            pingStateCallbacks.setLastPongTs(Date.now());
+            logger.trace(`App pong received: seq=${pongData.seq}`);
+          } else {
+            logger.debug(`Ignoring old pong: seq=${pongData.seq}`);
           }
-          return;
+        } catch (err) {
+          logger.error(`Invalid app pong format: ${err.message}`);
         }
+        return;
+      }
       }
     });
 
@@ -151,6 +168,11 @@ function connectWebSocket(config) {
         clients[uuid].destroy();
         delete clients[uuid];
       }
+
+      // Reset state on close for proper reconnection
+      pingSeq = 0;
+      lastPongTs = Date.now();
+      messageBuffer = Buffer.alloc(0);
 
       if (!isClosed && autoReconnect) {
         const delay = RECONNECT_BACKOFF[reconnectAttempt] || RECONNECT_BACKOFF[RECONNECT_BACKOFF.length - 1];
