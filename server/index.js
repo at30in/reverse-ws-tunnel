@@ -1,8 +1,9 @@
 // require('dotenv').config();
-const { startWebSocketServer } = require('./websocketServer');
+const { startWebSocketServer, stopWebSocketServer } = require('./websocketServer');
 const { setLogContext } = require('../utils/logger');
 
 module.exports = {
   startWebSocketServer,
+  stopWebSocketServer,
   setLogContext,
 };

@@ -5,7 +5,7 @@ const {
   MESSAGE_TYPE_APP_PING,
   MESSAGE_TYPE_APP_PONG,
 } = require('./constants');
-const { startTCPServer } = require('./tcpServer');
+const { ensureTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
 const { buildMessageBuffer } = require('../client/utils');
 
@@ -19,7 +19,7 @@ const { buildMessageBuffer } = require('../client/utils');
  * @param {string} tunnelIdHeaderName - Header name to identify the tunnel.
  * @param {number} port - Listening port for state grouping.
  */
-function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, port) {
+async function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderName, port) {
   logger.trace(`handleParsedMessage called. type=${type}, tunnelId=${tunnelId}, uuid=${uuid}`);
 
   if (type === MESSAGE_TYPE_CONFIG) {
@@ -53,16 +53,45 @@ function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHeaderNa
       };
 
       const portKey = String(TUNNEL_ENTRY_PORT);
-      if (!state[port][portKey]) {
-        logger.info(
-          `Starting new TCP server on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`
-        );
-        state[port][portKey] = {};
-        state[port][portKey] = {
-          tcpServer: startTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port),
-        };
+      // Check both state and global tcpServers registry
+      logger.debug(`[TCP] Checking existing servers for portKey=${portKey}`);
+      const existingServerInState = state[port]?.[portKey]?.tcpServer;
+      const existingServerInGlobal = state.tcpServers[portKey];
+      logger.debug(`[TCP] existingServerInState=${!!existingServerInState}, existingServerInGlobal=${!!existingServerInGlobal}`);
+      
+      const isServerListening = (existingServerInState && existingServerInState.listening) || 
+                                (existingServerInGlobal && existingServerInGlobal.listening);
+      logger.debug(`[TCP] isServerListening=${isServerListening}`);
+      
+      if (!isServerListening) {
+        // Close any stale TCP server in global registry before creating new one
+        if (state.tcpServers[portKey] && state.tcpServers[portKey].listening) {
+          logger.warn(`[TCP] Closing stale TCP server on port ${TUNNEL_ENTRY_PORT} before creating new one`);
+          state.tcpServers[portKey].close();
+        }
+        
+        // Use ensureTCPServer to handle port cleanup (EADDRINUSE after Node-RED restart)
+        logger.info(`[TCP] Starting new TCP server on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`);
+        
+        try {
+          logger.info(`[TCP] >>> Calling ensureTCPServer for port ${TUNNEL_ENTRY_PORT} <<<`);
+          const tcpServer = await ensureTCPServer(TUNNEL_ENTRY_PORT, tunnelIdHeaderName, port);
+          logger.info(`[TCP] >>> ensureTCPServer returned for port ${TUNNEL_ENTRY_PORT} <<<`);
+          
+          // Store in state per port
+          state[port][portKey] = { tcpServer };
+          logger.debug(`[TCP] Stored in state[${port}][${portKey}]`);
+          
+          // Also register in global tcpServers registry for tracking
+          state.tcpServers[portKey] = tcpServer;
+          logger.info(`[TCP] >>> REGISTERED in global state.tcpServers: port ${portKey}, listening=${tcpServer.listening} <<<`);
+          
+          logger.info(`[TCP] TCP server ready on port ${TUNNEL_ENTRY_PORT} for tunnelId=${tunnelId}`);
+        } catch (err) {
+          logger.error(`[TCP] Failed to create TCP server on port ${TUNNEL_ENTRY_PORT}: ${err.message}`);
+        }
       } else {
-        logger.debug(`TCP server already exists on port ${TUNNEL_ENTRY_PORT}`);
+        logger.debug(`[TCP] TCP server already exists and listening on port ${TUNNEL_ENTRY_PORT}`);
       }
 
       logger.info(`Tunnel [${tunnelId}] established successfully`);

@@ -1,4 +1,4 @@
-const { startTCPServer } = require('../server/tcpServer');
+const { startTCPServer, ensureTCPServer } = require('../server/tcpServer');
 const net = require('net');
 const state = require('../server/state');
 const { MESSAGE_TYPE_DATA } = require('../server/constants');
@@ -154,5 +154,69 @@ describe('startTCPServer', () => {
       expect(sentData.toString()).toContain('CLOSE');
       done();
     }, 100);
+  });
+});
+
+describe('ensureTCPServer', () => {
+  let mockServer;
+  let mockTakeoverServer;
+
+  beforeEach(() => {
+    mockServer = {
+      listen: jest.fn((port, cb) => cb()),
+      on: jest.fn(),
+    };
+    mockTakeoverServer = {
+      listen: jest.fn(),
+      on: jest.fn((event, cb) => {
+        if (event === 'error') {
+          // Simulate port not in use - error handler is set but won't be called
+        }
+        if (event === 'listening') {
+          // Simulate port is available - listening event fires immediately
+          setTimeout(() => cb(), 0);
+        }
+        return mockTakeoverServer;
+      }),
+      close: jest.fn((cb) => {
+        if (cb) setTimeout(cb, 0);
+      }),
+    };
+    net.createServer.mockReturnValue(mockServer);
+
+    state['8080'] = {
+      3000: {},
+      websocketTunnels: {},
+    };
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should call takeOverPort and then startTCPServer', async () => {
+    // First call is takeover server (port available)
+    // Second call is actual TCP server
+    net.createServer
+      .mockReturnValueOnce(mockTakeoverServer)
+      .mockReturnValueOnce(mockServer);
+
+    await ensureTCPServer(3000, 'x-tunnel-id', 8080);
+
+    // Should have called createServer twice (takeover + actual server)
+    expect(net.createServer).toHaveBeenCalledTimes(2);
+    // The actual server should have called listen
+    expect(mockServer.listen).toHaveBeenCalledWith(3000, expect.any(Function));
+  });
+
+  it('should create TCP server and store reference in state', async () => {
+    net.createServer
+      .mockReturnValueOnce(mockTakeoverServer)
+      .mockReturnValueOnce(mockServer);
+
+    await ensureTCPServer(3000, 'x-tunnel-id', 8080);
+
+    // Verify the TCP server reference is stored in state
+    expect(state['8080'][3000].tcpServer).toBe(mockServer);
   });
 });

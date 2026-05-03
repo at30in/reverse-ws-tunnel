@@ -30,7 +30,25 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 
 ---
 
-## ✨ v1.0.10 - What's New
+## ✨ v1.0.11 - What's New
+
+### ✨ New Features
+- **stopWebSocketServer(port)**: Added new function to properly stop and cleanup the WebSocket server
+  - Closes all active WebSocket connections (triggering cleanup of heartbeat intervals)
+  - Closes all TCP servers registered in state
+  - Cleans up state for the specified port
+  - Gracefully handles already-stopped servers (no errors)
+
+### 🐛 Bug Fixes
+- **Heartbeat cleanup**: Fixed issue where setInterval for heartbeat was not properly cleaned up when server stopped
+- **Node-RED integration**: Added cleanup on startup to handle cases where previous deployment didn't cleanup properly
+
+### 🔧 Improvements
+- **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
+
+---
+
+## ✨ v1.0.10 - Previous Release
 
 ### 🔧 Code Quality & Developer Experience
 - **Code Cleanup**: Removed unused constants and redundant variables

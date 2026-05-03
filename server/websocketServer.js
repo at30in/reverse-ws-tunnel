@@ -154,4 +154,88 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
   return state;
 }
 
-module.exports = { startWebSocketServer };
+/**
+ * Stops the WebSocket tunnel server and cleans up all resources.
+ * @param {number} port - Port of the WebSocket server to stop.
+ * @returns {Promise<void>} Resolves when cleanup is complete.
+ */
+async function stopWebSocketServer(port) {
+  const portKey = String(port);
+  const serverState = state[portKey];
+
+  if (!serverState) {
+    logger.debug(`No server found on port ${port}, nothing to stop`);
+    return;
+  }
+
+  logger.info(`Stopping WebSocket server on port ${port}...`);
+
+  // 1. Close all active WebSocket connections (triggers cleanup for each tunnel)
+  if (serverState.websocketTunnels) {
+    for (const [tunnelId, tunnel] of Object.entries(serverState.websocketTunnels)) {
+      if (tunnel.ws && tunnel.ws.readyState === WebSocket.OPEN) {
+        tunnel.ws.close(1000, 'Server shutting down');
+      }
+    }
+  }
+
+  // 2. Close all TCP servers in per-port state
+  logger.debug(`[CLEANUP] Checking per-port state for TCP servers. Keys: ${Object.keys(serverState).join(', ')}`);
+  for (const [tcpPort, tcpState] of Object.entries(serverState)) {
+    if (tcpPort !== 'webSocketServer' && tcpPort !== 'websocketTunnels' && tcpState?.tcpServer) {
+      logger.info(`[CLEANUP] Closing TCP server in per-port state on port ${tcpPort}`);
+      await new Promise((resolve) => {
+        tcpState.tcpServer.close(() => {
+          logger.info(`[CLEANUP] Closed TCP server on port ${tcpPort}`);
+          resolve();
+        });
+      });
+    }
+  }
+
+  // 2b. Close all TCP servers in global tcpServers registry
+  // This handles TCP servers that may not be in state yet (client not reconnected)
+  // Note: We close ALL servers in registry, not just listening ones, because they may have been
+  // closed in per-port cleanup but still exist in global registry
+  const globalTcpServerCount = Object.keys(state.tcpServers || {}).length;
+  logger.info(`[CLEANUP] Global tcpServers registry has ${globalTcpServerCount} entries: ${Object.keys(state.tcpServers || {}).join(', ')}`);
+  if (state.tcpServers && globalTcpServerCount > 0) {
+    for (const [tcpPort, tcpServer] of Object.entries(state.tcpServers)) {
+      logger.info(`[CLEANUP] Checking global TCP server on port ${tcpPort}: exists=${!!tcpServer}, listening=${tcpServer?.listening}`);
+      // Close any server that exists, regardless of listening state (it may have been closed in per-port cleanup)
+      if (tcpServer) {
+        if (tcpServer.listening) {
+          logger.info(`[CLEANUP] Closing global TCP server on port ${tcpPort} (listening)...`);
+          await new Promise((resolve) => {
+            tcpServer.close(() => {
+              logger.info(`[CLEANUP] Closed global TCP server on port ${tcpPort}`);
+              resolve();
+            });
+          });
+        } else {
+          // Server exists but not listening - it was already closed in per-port cleanup
+          // Just log and clear from registry
+          logger.info(`[CLEANUP] Global TCP server on port ${tcpPort} already closed (listening=false), clearing from registry`);
+        }
+      }
+    }
+    // Clear the global tcpServers registry
+    state.tcpServers = {};
+  }
+
+  // 3. Close the main WebSocket server
+  if (serverState.webSocketServer) {
+    await new Promise((resolve) => {
+      serverState.webSocketServer.close(() => {
+        logger.debug(`Closed WebSocket server on port ${port}`);
+        resolve();
+      });
+    });
+  }
+
+  // 4. Clean up state
+  delete state[portKey];
+  logger.info(`WebSocket server on port ${port} stopped and state cleaned`);
+}
+
+module.exports = { startWebSocketServer, stopWebSocketServer };

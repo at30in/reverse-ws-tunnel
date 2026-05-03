@@ -1,8 +1,3 @@
-const { startWebSocketServer } = require('../server/websocketServer');
-const WebSocket = require('ws');
-const state = require('../server/state');
-const { handleParsedMessage } = require('../server/messageHandler');
-
 jest.mock('ws');
 jest.mock('../server/messageHandler');
 jest.mock('../utils/logger', () => ({
@@ -14,6 +9,12 @@ jest.mock('../utils/logger', () => ({
     trace: jest.fn(),
   },
 }));
+
+// Imports after mocks
+const { startWebSocketServer, stopWebSocketServer } = require('../server/websocketServer');
+const WebSocket = require('ws');
+const state = require('../server/state');
+const { handleParsedMessage } = require('../server/messageHandler');
 
 describe('startWebSocketServer', () => {
   let mockServer;
@@ -42,6 +43,9 @@ describe('startWebSocketServer', () => {
   afterEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
+    // Clean up state
+    delete state['8080'];
+    delete state['9090'];
   });
 
   it('should create a WebSocket server and listen on the specified port', () => {
@@ -113,5 +117,114 @@ describe('startWebSocketServer', () => {
     expect(mockWs.terminate).toHaveBeenCalled();
     expect(mockWs.removeAllListeners).toHaveBeenCalled();
     expect(clearIntervalSpy).toHaveBeenCalled();
+  });
+});
+
+describe('stopWebSocketServer', () => {
+  let mockServer;
+  let mockWs;
+  let mockTcpServer;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockWs = {
+      on: jest.fn(),
+      ping: jest.fn(),
+      terminate: jest.fn(),
+      removeAllListeners: jest.fn(),
+      close: jest.fn(),
+      readyState: WebSocket.OPEN,
+    };
+    mockServer = {
+      on: jest.fn((event, cb) => {
+        if (event === 'listening') {
+          cb();
+        }
+      }),
+      close: jest.fn((cb) => {
+        if (cb) cb();
+      }),
+    };
+    mockTcpServer = {
+      close: jest.fn((cb) => {
+        if (cb) cb();
+      }),
+    };
+    WebSocket.Server.mockReturnValue(mockServer);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+    // Clean up state
+    delete state['8080'];
+    delete state['9090'];
+  });
+
+  it('should do nothing if no server exists on the port', async () => {
+    await stopWebSocketServer(8080);
+    // Should not throw and should not modify state
+    expect(state['8080']).toBeUndefined();
+  });
+
+  it('should close all WebSocket connections', async () => {
+    startWebSocketServer({ port: 8080, tunnelIdHeaderName: 'x-tunnel-id' });
+
+    // Simulate a connection
+    const connectionCallback = mockServer.on.mock.calls.find(call => call[0] === 'connection')[1];
+    connectionCallback(mockWs, { socket: { remoteAddress: '127.0.0.1' } });
+
+    // Manually add the WebSocket to websocketTunnels (simulating what happens when a message is processed)
+    state['8080'].websocketTunnels['test-tunnel-id'] = { ws: mockWs };
+
+    // Verify tunnel is in state
+    expect(state['8080'].websocketTunnels).toBeDefined();
+
+    // Stop the server
+    await stopWebSocketServer(8080);
+
+    // Verify WebSocket close was called
+    expect(mockWs.close).toHaveBeenCalledWith(1000, 'Server shutting down');
+  });
+
+  it('should close all TCP servers in state', async () => {
+    startWebSocketServer({ port: 8080, tunnelIdHeaderName: 'x-tunnel-id' });
+
+    // Add a TCP server to state (simulating what tcpServer.js does)
+    state['8080']['4443'] = { tcpServer: mockTcpServer };
+
+    await stopWebSocketServer(8080);
+
+    // Verify TCP server was closed
+    expect(mockTcpServer.close).toHaveBeenCalled();
+  });
+
+  it('should close the main WebSocket server', async () => {
+    startWebSocketServer({ port: 8080, tunnelIdHeaderName: 'x-tunnel-id' });
+
+    await stopWebSocketServer(8080);
+
+    // Verify main server was closed
+    expect(mockServer.close).toHaveBeenCalled();
+  });
+
+  it('should clean up state after stopping', async () => {
+    startWebSocketServer({ port: 8080, tunnelIdHeaderName: 'x-tunnel-id' });
+
+    // Verify state exists
+    expect(state['8080']).toBeDefined();
+
+    await stopWebSocketServer(8080);
+
+    // Verify state is cleaned up
+    expect(state['8080']).toBeUndefined();
+  });
+
+  it('should handle calling stop on already stopped server gracefully', async () => {
+    startWebSocketServer({ port: 8080, tunnelIdHeaderName: 'x-tunnel-id' });
+    await stopWebSocketServer(8080);
+
+    // Call stop again - should not throw
+    await expect(stopWebSocketServer(8080)).resolves.not.toThrow();
   });
 });

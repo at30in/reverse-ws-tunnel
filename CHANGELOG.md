@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.11] - 2026-04-30
+
+### ✨ New Features
+- **stopWebSocketServer(port)**: Added new function to properly stop and cleanup the WebSocket server
+  - Closes all active WebSocket connections (triggering cleanup of heartbeat intervals)
+  - Closes all TCP servers registered in state
+  - Closes the main WebSocket server
+  - Cleans up state for the specified port
+  - Gracefully handles already-stopped servers (no errors)
+
+### 🐛 Bug Fixes
+- **Heartbeat cleanup**: Fixed issue where setInterval for heartbeat was not properly cleaned up when server stopped
+- **Node-RED integration**: Added cleanup on startup to handle cases where previous deployment didn't cleanup properly
+- **TCP server port reuse**: Fixed "EADDRINUSE" error when client reconnects after Node-RED restart
+  - Now checks if TCP server is actually listening (`server.listening`) before skipping creation
+  - Previously only checked if state entry existed, not if server was active
+- **TCP server global registry**: Added global tcpServers registry to track TCP servers even when not in state
+  - When stopWebSocketServer is called, now closes ALL TCP servers in global registry
+  - When creating new TCP server, checks global registry and closes stale servers before creating new one
+  - Fixes issue where TCP server created after Node-RED restart wasn't cleaned up because it wasn't in state yet
+
+### 🔧 Improvements
+- **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
+- **State management**: Improved state cleanup to prevent stale entries after server restart
+
+### 🧪 Testing
+- Added 6 new test cases for stopWebSocketServer function covering:
+  - Stop on non-existent server (no-op)
+  - Closing all WebSocket connections
+  - Closing all TCP servers
+  - Closing main WebSocket server
+  - State cleanup
+  - Stop on already-stopped server (graceful)
+
+---
+
 ## [1.0.10] - 2026-01-31
 
 ### 🔧 Code Quality Improvements
