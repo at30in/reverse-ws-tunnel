@@ -9,7 +9,6 @@ src/custom/*
 !src/custom/tsconfig.json
 compiled/*
 .npmrc
-docs/
 coverage/
 .nyc_output
 # stryker temp files
