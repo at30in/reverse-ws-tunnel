@@ -17,3 +17,9 @@ coverage/
 # Config files with sensitive data
 examples/client/.config.toml
 **/.config.toml
+
+# OpenCode tool
+.opencode/
+
+# Thoughts/designs (internal documentation)
+thoughts/
