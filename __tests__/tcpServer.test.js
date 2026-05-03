@@ -24,10 +24,15 @@ describe('startTCPServer', () => {
       on: jest.fn(),
       destroy: jest.fn(),
       write: jest.fn(),
+      address: () => ({ port: 3000 }),
     };
     mockServer = {
-      listen: jest.fn((port, cb) => cb()),
+      // Accept both forms: listen(port, cb) or listen({port, host, reuseAddr}, cb)
+      listen: jest.fn((portOrOpts, cb) => {
+        if (typeof cb === 'function') cb();
+      }),
       on: jest.fn(),
+      address: () => ({ port: 3000 }),
     };
     net.createServer.mockReturnValue(mockServer);
 
@@ -50,15 +55,19 @@ describe('startTCPServer', () => {
     jest.clearAllMocks();
   });
 
-  it('should create a TCP server and listen on the specified port', () => {
-    startTCPServer(3000, 'x-tunnel-id', 8080);
+  it('should create a TCP server and listen on the specified port', async () => {
+    await startTCPServer(3000, 'x-tunnel-id', 8080);
     expect(net.createServer).toHaveBeenCalled();
-    expect(mockServer.listen).toHaveBeenCalledWith(3000, expect.any(Function));
+    // Now accepts both number and object form
+    expect(mockServer.listen).toHaveBeenCalled();
+    const callArg = mockServer.listen.mock.calls[0][0];
+    expect(callArg.port).toBe(3000);
   });
 
   it('should handle a new TCP connection', () => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
-    const connectionCallback = net.createServer.mock.calls[0][0];
+    // Connection callback is the SECOND argument to net.createServer(options, callback)
+    const connectionCallback = net.createServer.mock.calls[0][1];
     connectionCallback(mockSocket);
     expect(mockSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
     expect(mockSocket.on).toHaveBeenCalledWith('end', expect.any(Function));
@@ -68,7 +77,7 @@ describe('startTCPServer', () => {
 
   it('should destroy socket for invalid tunnel ID', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
-    const connectionCallback = net.createServer.mock.calls[0][0];
+    const connectionCallback = net.createServer.mock.calls[0][1];
     connectionCallback(mockSocket);
 
     const dataCallback = mockSocket.on.mock.calls.find(call => call[0] === 'data')[1];
@@ -85,7 +94,7 @@ describe('startTCPServer', () => {
 
   it('should forward data to the correct tunnel', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
-    const connectionCallback = net.createServer.mock.calls[0][0];
+    const connectionCallback = net.createServer.mock.calls[0][1];
     connectionCallback(mockSocket);
 
     const dataCallback = mockSocket.on.mock.calls.find(call => call[0] === 'data')[1];
@@ -103,7 +112,7 @@ describe('startTCPServer', () => {
 
   it('should extract tunnel ID from cookie', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
-    const connectionCallback = net.createServer.mock.calls[0][0];
+    const connectionCallback = net.createServer.mock.calls[0][1];
     connectionCallback(mockSocket);
 
     const dataCallback = mockSocket.on.mock.calls.find(call => call[0] === 'data')[1];
@@ -119,7 +128,7 @@ describe('startTCPServer', () => {
 
   it('should handle WebSocket upgrade requests', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
-    const connectionCallback = net.createServer.mock.calls[0][0];
+    const connectionCallback = net.createServer.mock.calls[0][1];
     connectionCallback(mockSocket);
 
     const dataCallback = mockSocket.on.mock.calls.find(call => call[0] === 'data')[1];
@@ -138,7 +147,7 @@ describe('startTCPServer', () => {
 
   it('should send CLOSE message on socket end', done => {
     startTCPServer(3000, 'x-tunnel-id', 8080);
-    const connectionCallback = net.createServer.mock.calls[0][0];
+    const connectionCallback = net.createServer.mock.calls[0][1];
     connectionCallback(mockSocket);
 
     const dataCallback = mockSocket.on.mock.calls.find(call => call[0] === 'data')[1];
@@ -163,11 +172,17 @@ describe('ensureTCPServer', () => {
 
   beforeEach(() => {
     mockServer = {
-      listen: jest.fn((port, cb) => cb()),
+      // Accept both forms: listen(port, cb) or listen({port, host, reuseAddr}, cb)
+      listen: jest.fn((portOrOpts, cb) => {
+        if (typeof cb === 'function') cb();
+      }),
       on: jest.fn(),
+      address: () => ({ port: 3000 }),
     };
     mockTakeoverServer = {
-      listen: jest.fn(),
+      listen: jest.fn((portOrOpts, cb) => {
+        if (typeof cb === 'function') cb();
+      }),
       on: jest.fn((event, cb) => {
         if (event === 'error') {
           // Simulate port not in use - error handler is set but won't be called
@@ -181,8 +196,8 @@ describe('ensureTCPServer', () => {
       close: jest.fn((cb) => {
         if (cb) setTimeout(cb, 0);
       }),
+      address: () => ({ port: 3000 }),
     };
-    net.createServer.mockReturnValue(mockServer);
 
     state['8080'] = {
       3000: {},
@@ -194,29 +209,29 @@ describe('ensureTCPServer', () => {
     jest.clearAllMocks();
   });
 
-  it('should call takeOverPort and then startTCPServer', async () => {
-    // First call is takeover server (port available)
-    // Second call is actual TCP server
-    net.createServer
-      .mockReturnValueOnce(mockTakeoverServer)
-      .mockReturnValueOnce(mockServer);
+  it('should call startTCPServer directly (no takeover server)', async () => {
+    // ensureTCPServer calls startTCPServer directly, not a separate takeover server
+    // It retries on EADDRINUSE but doesn't use a separate takeover check
+    net.createServer.mockReturnValue(mockServer);
 
     await ensureTCPServer(3000, 'x-tunnel-id', 8080);
 
-    // Should have called createServer twice (takeover + actual server)
-    expect(net.createServer).toHaveBeenCalledTimes(2);
-    // The actual server should have called listen
-    expect(mockServer.listen).toHaveBeenCalledWith(3000, expect.any(Function));
+    // Should have called createServer once (startTCPServer calls createServer once)
+    expect(net.createServer).toHaveBeenCalledTimes(1);
+    // The server should have called listen with object form
+    expect(mockServer.listen).toHaveBeenCalled();
+    const listenCall = mockServer.listen.mock.calls[0];
+    expect(listenCall[0].port).toBe(3000);
+    expect(typeof listenCall[1]).toBe('function');
   });
 
-  it('should create TCP server and store reference in state', async () => {
-    net.createServer
-      .mockReturnValueOnce(mockTakeoverServer)
-      .mockReturnValueOnce(mockServer);
+  it('should return the TCP server (caller stores in state)', async () => {
+    // ensureTCPServer returns the server, caller (messageHandler.js) stores it in state
+    net.createServer.mockReturnValue(mockServer);
 
-    await ensureTCPServer(3000, 'x-tunnel-id', 8080);
+    const result = await ensureTCPServer(3000, 'x-tunnel-id', 8080);
 
-    // Verify the TCP server reference is stored in state
-    expect(state['8080'][3000].tcpServer).toBe(mockServer);
+    // The function should return the server instance
+    expect(result).toBe(mockServer);
   });
 });

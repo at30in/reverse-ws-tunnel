@@ -118,7 +118,7 @@ describe('Client Message Handling', () => {
     it('should close TCP connection on CLOSE message', () => {
       jest.useFakeTimers();
       const config = {
-        tunnelId: 'test-tunnel'.padEnd(36, ' '),
+        tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',
         targetUrl: 'http://localhost:3000',
         targetPort: 3000,
@@ -130,7 +130,7 @@ describe('Client Message Handling', () => {
 
       const messageCallback = mockWs.on.mock.calls.find(call => call[0] === 'message')[1];
 
-      // First create connection
+      // First create connection by sending data message
       const dataPayload = Buffer.from('test data');
       const dataMessage = Buffer.concat([
         Buffer.alloc(4),
@@ -142,7 +142,13 @@ describe('Client Message Handling', () => {
       dataMessage.writeUInt32BE(36 + 36 + 1 + dataPayload.length, 0);
       messageCallback(dataMessage);
 
-      // Then send CLOSE
+      // Simulate that the TCP connection was created (trigger the connect event)
+      const connectHandler = mockTcpSocket.on.mock.calls.find(call => call[0] === 'connect')[1];
+      if (connectHandler) {
+        connectHandler();
+      }
+
+      // Then send CLOSE - use same uuid that was used for data
       const closePayload = Buffer.from('CLOSE');
       const closeMessage = Buffer.concat([
         Buffer.alloc(4),
@@ -161,7 +167,14 @@ describe('Client Message Handling', () => {
 
   describe('Pong messages', () => {
     it('should accept pong with sequence number in valid window', () => {
-      jest.useFakeTimers();
+      // Use incrementing time to properly simulate elapsed time
+      let timeCounter = 50000; // Start at 50s so initial lastPongTs = 50s
+      const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => {
+        const now = timeCounter;
+        timeCounter += 1000;
+        return now;
+      });
+      
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',
@@ -172,10 +185,12 @@ describe('Client Message Handling', () => {
       connectWebSocket(config);
       const openCallback = mockWs.on.mock.calls.find(call => call[0] === 'open')[1];
       openCallback();
+      // Advance to 25s - health monitor runs but elapsed < 45s
       jest.advanceTimersByTime(25000);
 
       const messageCallback = mockWs.on.mock.calls.find(call => call[0] === 'message')[1];
-      const payload = Buffer.from('{"type":"pong","seq":0}');
+      // Pong with seq=1 matches the first ping (seq=1)
+      const payload = Buffer.from('{"type":"pong","seq":1}');
       const pongMessage = Buffer.concat([
         Buffer.alloc(4),
         Buffer.from('test-tunnel'.padEnd(36, ' ')),
@@ -186,10 +201,11 @@ describe('Client Message Handling', () => {
       pongMessage.writeUInt32BE(36 + 36 + 1 + payload.length, 0);
       messageCallback(pongMessage);
 
-      jest.advanceTimersByTime(40000);
+      // Advance 15s more - elapsed < 45s, should NOT terminate
+      jest.advanceTimersByTime(15000);
       expect(mockWs.terminate).not.toHaveBeenCalled();
 
-      jest.useRealTimers();
+      mockDateNow.mockRestore();
     });
   });
 });

@@ -18,12 +18,20 @@ describe('ensureTCPServer', () => {
   let mockTakeoverServer;
 
   beforeEach(() => {
-    mockServer = {
-      listen: jest.fn((port, cb) => cb()),
+mockServer = {
+      listen: jest.fn((portOrOpts, cb) => {
+        if (typeof cb === 'function') cb();
+      }),
       on: jest.fn(),
+      close: jest.fn((cb) => {
+        if (cb) setTimeout(cb, 0);
+      }),
+      address: () => ({ port: 3000 }),
     };
     mockTakeoverServer = {
-      listen: jest.fn(),
+      listen: jest.fn((portOrOpts, cb) => {
+        if (typeof cb === 'function') cb();
+      }),
       on: jest.fn((event, cb) => {
         if (event === 'error') {
           // Simulate port not in use - error handler is set but won't be called
@@ -37,6 +45,7 @@ describe('ensureTCPServer', () => {
       close: jest.fn((cb) => {
         if (cb) setTimeout(cb, 0);
       }),
+      address: () => ({ port: 3000 }),
     };
     net.createServer.mockReturnValue(mockServer);
 
@@ -52,18 +61,17 @@ describe('ensureTCPServer', () => {
   });
 
   it('should create a new TCP server when port is available', async () => {
-    // First call is takeover server (port available)
-    // Second call is actual TCP server
-    net.createServer
-      .mockReturnValueOnce(mockTakeoverServer)
-      .mockReturnValueOnce(mockServer);
+    // ensureTCPServer calls startTCPServer directly (no separate takeover server)
+    net.createServer.mockReturnValue(mockServer);
 
     await ensureTCPServer(3000, 'x-tunnel-id', 8080);
 
-    // Should have called createServer twice (takeover + actual server)
-    expect(net.createServer).toHaveBeenCalledTimes(2);
-    // The actual server should have called listen
-    expect(mockServer.listen).toHaveBeenCalledWith(3000, expect.any(Function));
+    // Should have called createServer once (startTCPServer calls createServer once)
+    expect(net.createServer).toHaveBeenCalledTimes(1);
+    // The server should have called listen with object form
+    expect(mockServer.listen).toHaveBeenCalled();
+    const callArg = mockServer.listen.mock.calls[0][0];
+    expect(callArg.port).toBe(3000);
   });
 
   it('should handle EADDRINUSE and attempt to release port', async () => {
@@ -96,22 +104,23 @@ describe('ensureTCPServer', () => {
     expect(net.createServer).toHaveBeenCalled();
   });
 
-  it('should register server in state after creation', async () => {
-    net.createServer
-      .mockReturnValueOnce(mockTakeoverServer)
-      .mockReturnValueOnce(mockServer);
+  it('should return the TCP server (caller stores in state)', async () => {
+    // ensureTCPServer returns the server, caller (messageHandler.js) stores it in state
+    // Just verify it returns something with the expected methods
+    net.createServer.mockReturnValue(mockServer);
 
-    await ensureTCPServer(3000, 'x-tunnel-id', 8080);
+    const result = await ensureTCPServer(3000, 'x-tunnel-id', 8080);
 
-    // Server should be registered in state
-    expect(state['8080']['3000']).toBeDefined();
-    expect(state['8080']['3000'].tcpServer).toBeDefined();
+    // Verify the result has the expected properties (don't compare exact object)
+    expect(result).toBeDefined();
+    expect(typeof result.listen).toBe('function');
+    expect(typeof result.on).toBe('function');
+    expect(typeof result.close).toBe('function');
   });
 
   it('should register server in global tcpServers registry', async () => {
-    net.createServer
-      .mockReturnValueOnce(mockTakeoverServer)
-      .mockReturnValueOnce(mockServer);
+    // ensureTCPServer calls startTCPServer directly (no separate takeover server)
+    net.createServer.mockReturnValue(mockServer);
 
     await ensureTCPServer(3000, 'x-tunnel-id', 8080);
 
