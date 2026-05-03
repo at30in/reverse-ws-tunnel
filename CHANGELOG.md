@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.11] - 2026-04-30
+## [1.0.11] - 2026-05-03
 
 ### ✨ New Features
 - **stopWebSocketServer(port)**: Added new function to properly stop and cleanup the WebSocket server
@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 - **Heartbeat cleanup**: Fixed issue where setInterval for heartbeat was not properly cleaned up when server stopped
 - **Node-RED integration**: Added cleanup on startup to handle cases where previous deployment didn't cleanup properly
+- **TCP server connection hang**: Fixed critical issue where TCP connections would hang indefinitely
+  - Removed `pauseOnConnect: true` option from TCP server configuration
+  - This option was added in error - it pauses sockets on connect and requires manual `socket.resume()`
+  - The fix restores proper connection flow while keeping `reuseAddr: true` for port reuse on restart
 - **TCP server port reuse**: Fixed "EADDRINUSE" error when client reconnects after Node-RED restart
   - Now checks if TCP server is actually listening (`server.listening`) before skipping creation
   - Previously only checked if state entry existed, not if server was active

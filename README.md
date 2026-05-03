@@ -42,9 +42,20 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 ### 🐛 Bug Fixes
 - **Heartbeat cleanup**: Fixed issue where setInterval for heartbeat was not properly cleaned up when server stopped
 - **Node-RED integration**: Added cleanup on startup to handle cases where previous deployment didn't cleanup properly
+- **TCP server connection hang**: Fixed critical issue where TCP connections would hang indefinitely
+  - Removed `pauseOnConnect: true` option from TCP server configuration
+  - This option was added in error - it pauses sockets on connect and requires manual `socket.resume()`
+  - The fix restores proper connection flow while keeping `reuseAddr: true` for port reuse on restart
+- **TCP server port reuse**: Fixed "EADDRINUSE" error when client reconnects after Node-RED restart
+  - Now checks if TCP server is actually listening (`server.listening`) before skipping creation
+  - Previously only checked if state entry existed, not if server was active
+- **TCP server global registry**: Added global tcpServers registry to track TCP servers even when not in state
+  - When stopWebSocketServer is called, now closes ALL TCP servers in global registry
+  - When creating new TCP server, checks global registry and closes stale servers before creating new one
 
 ### 🔧 Improvements
 - **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
+- **State management**: Improved state cleanup to prevent stale entries after server restart
 
 ---
 
@@ -359,6 +370,29 @@ Set the log level via:
 
 - Environment variable: `LOG_LEVEL=debug`
 - TOML config: `logLevel = "debug"`
+
+### Logger API
+
+The library exports logger functions for advanced control:
+
+```javascript
+const { setLogLevel, getLogLevel, setLogContext, getLogContext, logger } = require('@remotelinker/reverse-ws-tunnel/utils');
+
+// Set log level programmatically
+setLogLevel('debug');
+
+// Get current log level
+const currentLevel = getLogLevel();
+
+// Set context for all log messages (useful for Node-RED)
+setLogContext({ nodeId: 'my-node', session: 'abc123' });
+
+// Get current context
+const context = getLogContext();
+
+// Use logger directly
+logger.info('Custom log message', { custom: 'data' });
+```
 
 ---
 

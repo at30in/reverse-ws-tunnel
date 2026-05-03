@@ -12,7 +12,6 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
   const tcpPortKey = String(port);
 
   const server = net.createServer({ 
-    pauseOnConnect: true,
     // Allow reusing the port quickly after server closes (SO_REUSEADDR)
     // This helps with Node-RED restarts where old server might be in TIME_WAIT
     // Note: On some OS, you may also need to handle EADDRINUSE by waiting a bit
