@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-08-25
+
+### ✨ New Features
+- **Bounded backpressure system**: Complete flow control for TCP↔WS in both directions
+  - `backpressureSender`: TCP→WS with pause/resume (high/low watermark hysteresis)
+  - `streamWriteQueue`: WS→TCP bounded FIFO with overflow self-destruct
+- **Incremental frame parser**: `FrameParser` replaces `Buffer.concat()` — O(n) memory, no reallocation
+- **Configurable limits via env vars**: `RWT_HIGH_WATERMARK`, `RWT_LOW_WATERMARK`, `RWT_MAX_FRAME_SIZE`, `RWT_MAX_BUFFER_PER_STREAM`, `RWT_MAX_BUFFER_PER_TUNNEL`, `RWT_MAX_BUFFER_PER_PROCESS`, `RWT_TCP_IDLE_TIMEOUT_MS`
+- **Per-tunnel metrics**: `TunnelMetrics` singleton with `snapshot()`, event loop lag, buffer accounting
+- **Bidirectional CLOSE**: Server and client both send CLOSE on overflow or socket end
+- **Chunked TE re-framing**: Fixes `http-parser-js` de-chunking bug where headers were forwarded with `Transfer-Encoding: chunked` but body was already de-chunked
+
+### 🐛 Bug Fixes
+- **Wire format compatibility**: Server now rewrites headers and re-chunks body when upstream sends `Transfer-Encoding: chunked`
+- **CLOSE handling**: Server now calls `conn.socket.end()` when receiving CLOSE from client (previously only client did this)
+- **Frame parser overflow**: `FrameSizeError` thrown before allocation when declared frame size exceeds limit
+
+### 🔧 Improvements
+- **Default buffer limits raised**: `maxBufferPerStreamBytes` 8MB → 64MB, `maxBufferPerTunnelBytes` 32MB → 256MB — transfers up to 64MB work without configuration
+- **ws.maxBufferedAmount disabled**: `applyWsBufferGuard()` is now a no-op — the ws library's built-in guard destroys sockets too aggressively for large transfers
+- **Test suite expanded**: 20 suites, 122 tests (was 16 suites, 105 tests)
+  - New: `wireCompat`, `backpressureSender`, `streamWriteQueue`, `tunnelLimits`, `tunnelMetrics`
+  - Integration: `volumes` (100MB, 10×8MB, starvation, slow reader, 60 streams), `resilience` (disconnect+reconnect, FIN propagation), `backpressure` (tiny limits, overflow)
+
+### 📚 Documentation
+- Updated `docs/architecture.md`: added sections for FrameParser, backpressureSender, streamWriteQueue, tunnelLimits, tunnelMetrics, bidirectional CLOSE, RWT_* env vars
+- Updated `docs/state-management.md`: added sender/queue/stats to tcpConnections structure
+- Updated `README.md`: added backpressure configuration section with env var table
+
 ## [1.0.11] - 2026-05-03
 
 ### ✨ New Features

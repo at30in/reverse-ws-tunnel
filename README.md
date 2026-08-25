@@ -328,6 +328,24 @@ X-Custom-Header = "custom-value"
 npm run example:client
 ```
 
+### 🔧 Backpressure & Buffering Configuration
+
+The tunnel supports configurable buffer limits for flow control between TCP and WebSocket. These limits prevent memory exhaustion under high load or with slow consumers.
+
+#### Environment Variables
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `RWT_HIGH_WATERMARK` | Pause TCP producer when outstanding bytes reach this | `8388608` (8MB) | `16777216` |
+| `RWT_LOW_WATERMARK` | Resume TCP producer when outstanding bytes drop below this | `2097152` (2MB) | `4194304` |
+| `RWT_MAX_FRAME_SIZE` | Maximum single frame size on the wire | `1048576` (1MB) | `2097152` |
+| `RWT_MAX_BUFFER_PER_STREAM` | Max bytes queued per stream (WS→TCP) | `67108864` (64MB) | `134217728` |
+| `RWT_MAX_BUFFER_PER_TUNNEL` | Max bytes queued across all streams of a tunnel | `268435456` (256MB) | `536870912` |
+| `RWT_MAX_BUFFER_PER_PROCESS` | Process-wide buffer ceiling (warn-only) | `536870912` (512MB) | `1073741824` |
+| `RWT_TCP_IDLE_TIMEOUT_MS` | Idle timeout for per-request TCP clients | `60000` (60s) | `120000` |
+
+**Defaults support transfers up to 64MB without configuration.** For larger files, increase `RWT_MAX_BUFFER_PER_STREAM` and `RWT_MAX_BUFFER_PER_TUNNEL`.
+
 ---
 
 ## 🐳 Docker Deployment

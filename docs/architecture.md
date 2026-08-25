@@ -297,16 +297,268 @@ state[portKey] = {
     "<tunnelId>": {
       ws: <WebSocket>,
       tcpConnections: {
-        "<uuid>": { socket: <net.Socket> }
+        "<uuid>": {
+          socket: <net.Socket>,
+          sender: <BackpressureSender>,   // TCP → WS (direzione request)
+          queue: <StreamWriteQueue>,       // WS → TCP (direzione response)
+          stats: { bytesIn, bytesOut, startTime }
+        }
       }
     }
   },
-  "3032": {  // TCP server per porta 3032
+  "3032": {
     tcpServer: <net.Server>
   }
 }
 */
 ```
+
+#### 3.1.5 utils/frameParser.js - Parser Incrementale
+
+Il parser binario sostituisce il vecchio approccio `Buffer.concat()` con un parser incrementale che preserva solo il buffer incompleto tra le chiamate.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         FRAME PARSER                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Input:  chunk TCP/WS arriva (dimensione arbitraria)                       │
+│  Output: array di frame completi                                           │
+│                                                                             │
+│  push(chunk) → [{ tunnelId, uuid, type, payload, declaredLength }]         │
+│                                                                             │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐                              │
+│  │  tail    │ +  │  chunk   │ →  │  frames  │ +  new tail                  │
+│  │ (previo) │    │ (nuovo)  │    │ (output) │                              │
+│  └──────────┘    └──────────┘    └──────────┘                              │
+│                                                                             │
+│  Ottimizzazioni:                                                            │
+│  - Nessuna riallocazione del buffer intero                                 │
+│  - appende solo il frame incompleto (tail)                                 │
+│  - Controlla maxFrameSizeBytes PRIMA di allocare il payload                │
+│  - Lancio FrameSizeError se il frame dichiarato supera il limite           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```javascript
+// utils/frameParser.js - Uso base
+const parser = new FrameParser({ maxFrameSizeBytes: 1024 * 1024 });
+
+// push() è sincrono, ritorna i frame completi
+const frames = parser.push(incompleteChunk);
+// frames[0] = { tunnelId, uuid, type, payload, declaredLength }
+
+// Errori di frame troppo grande
+try {
+  parser.push(oversizeChunk);
+} catch (e) {
+  if (e instanceof FrameSizeError) {
+    // e.declaredLength, e.maxFrameSizeBytes
+  }
+}
+```
+
+#### 3.1.6 utils/backpressureSender.js - Controllo Flusso TCP → WS
+
+Gestisce l'invio dati dalla direzione TCP verso WebSocket con meccanismo di pause/resume.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    BACKPRESSURE SENDER (TCP → WS)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  TCP socket ──data──► sender.send(chunk) ──► ws.send(frame, callback)      │
+│                                                                             │
+│  Contatori:                                                                │
+│    outstanding = bytes inviati a ws.send() ma non ancora confermati        │
+│    (callback non ancora chiamata)                                          │
+│                                                                             │
+│  Flusso controllo:                                                         │
+│    outstanding >= highWatermarkBytes (8MB)  →  socket.pause()              │
+│    outstanding <= lowWatermarkBytes  (2MB)  →  socket.resume()             │
+│                                                                             │
+│  Ratio 4:1 previene thrashing pause/resume.                               │
+│                                                                             │
+│  ┌─────────┐     ┌─────────┐     ┌─────────┐                              │
+│  │ socket  │ ──► │ sender  │ ──► │   ws    │                              │
+│  │ .pause  │     │ .resume │     │ .send() │                              │
+│  └─────────┘     └─────────┘     └─────────┘                              │
+│       ▲                               │                                    │
+│       └───── maybeResume() ◄─────────┘                                    │
+│              maybePause()                                                  │
+│                                                                             │
+│  Nota: applyWsBufferGuard() è intenzionalmente un no-op.                  │
+│  Il ws.maxBufferedAmount distrugge il socket quando superato,              │
+│  troppo aggressivo per transfer legittimi.                                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```javascript
+// utils/backpressureSender.js - Flusso interno
+const sender = createBackpressureSender({
+  socket,         // net.Socket (entry TCP)
+  ws,             // WebSocket
+  tunnelId,
+  uuid,
+  limits,         // getTunnelLimits()
+  metrics,        // TunnelMetrics instance
+  onPause: () => socket.pause(),
+  onResume: () => socket.resume(),
+});
+
+sender.send(chunk);   // Wrappa in frame, chiama ws.send(buffer, callback)
+
+// Dopo highWatermarkBytes → socket viene pausato
+// Dopo che le callback riducono outstanding sotto lowWatermark → socket riprende
+```
+
+#### 3.1.7 utils/streamWriteQueue.js - Coda Bounded WS → TCP
+
+Gestisce l'invio dati dalla direzione WebSocket verso TCP con coda bounded e auto-distruttiva.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    STREAM WRITE QUEUE (WS → TCP)                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ws.on('data') ──► queue.enqueue(payload) ──► pump() ──► socket.write()   │
+│                                                                             │
+│  Coda: Array<Buffer> con duck-typed socket                                 │
+│  (accetta qualsiasi oggetto con write(), writableLength, on/emit)         │
+│                                                                             │
+│  Limiti (3 livelli):                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 1. Per-stream: queuedBytes + payload.length > maxBufferPerStream   │   │
+│  │    → destroy stream + onOverflow('stream') + CLOSE frame           │   │
+│  │                                                                     │   │
+│  │ 2. Per-tunnel: metrics.getBufferedPerTunnel() + payload > cap      │   │
+│  │    → destroy stream + onOverflow('tunnel') + CLOSE frame           │   │
+│  │                                                                     │   │
+│  │ 3. Per-process: solo log warning, nessun destroy                   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  Pump cycle:                                                               │
+│  while (queue.length > 0 && drained) {                                     │
+│    const payload = queue.shift();                                          │
+│    queuedBytes -= payload.length;                                          │
+│    drained = socket.write(payload);                                        │
+│    if (!drained) → aspetta 'drain' event                                   │
+│  }                                                                         │
+│                                                                             │
+│  Overflow = self-destruct immediato:                                       │
+│  1. Svuota la coda (queue.length = 0)                                     │
+│  2. Rimuove metriche                                                       │
+│  3. Chiama onOverflow → owner invia CLOSE e distrugge socket              │
+│                                                                             │
+│  Nota: il socket.write() rispetta la backpressure nativa di Node.js.      │
+│  Se il socket è saturo, pump() si ferma e aspetta 'drain'.                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```javascript
+// utils/streamWriteQueue.js - Uso base
+const queue = createStreamWriteQueue({
+  socket,        // net.Socket (target TCP) — o duck-typed
+  tunnelId,
+  uuid,
+  limits,        // getTunnelLimits()
+  metrics,       // TunnelMetrics instance
+  onOverflow: (scope) => {
+    // scope = 'stream' | 'tunnel'
+    sender.send('CLOSE');
+    socket.destroy();
+  },
+});
+
+queue.enqueue(payload);  // Aggiunge alla coda, pompa automaticamente
+queue.destroy();          // Cleanup manuale
+queue.depth();            // Byte attualmente in coda (queuedBytes)
+```
+
+#### 3.1.8 utils/tunnelLimits.js - Limiti Configurabili
+
+Unico source of truth per tutti i threshold di buffer. Risoluzione: defaults < env vars < overrides programmatici.
+
+```javascript
+// utils/tunnelLimits.js - Defaults attuali
+
+const DEFAULT_LIMITS = {
+  highWatermarkBytes:       8 * 1024 * 1024,    // 8MB  - pausa sender
+  lowWatermarkBytes:        2 * 1024 * 1024,    // 2MB  - riprende sender
+  maxFrameSizeBytes:        1 * 1024 * 1024,    // 1MB  - max frame wire
+  maxBufferPerStreamBytes: 64 * 1024 * 1024,   // 64MB - coda per-stream
+  maxBufferPerTunnelBytes: 256 * 1024 * 1024,  // 256MB- coda per-tunnel
+  maxBufferPerProcessBytes: 512 * 1024 * 1024, // 512MB- warn-only
+  tcpIdleTimeoutMs: 60000,                      // 60s  - idle close
+};
+```
+
+| Env Var | Default | Descrizione |
+|---------|---------|-------------|
+| `RWT_HIGH_WATERMARK` | 8MB | Pausa il producer TCP quando i byte in flight raggiungono questo valore |
+| `RWT_LOW_WATERMARK` | 2MB | Riprende il producer quando i byte scendono sotto questo valore |
+| `RWT_MAX_FRAME_SIZE` | 1MB | Limite massimo per il campo length di un singolo frame |
+| `RWT_MAX_BUFFER_PER_STREAM` | 64MB | Max byte nella coda di un singolo stream (WS→TCP) |
+| `RWT_MAX_BUFFER_PER_TUNNEL` | 256MB | Max byte aggregati in tutti gli stream di un tunnel |
+| `RWT_MAX_BUFFER_PER_PROCESS` | 512MB | Limite processo (solo warning) |
+| `RWT_TCP_IDLE_TIMEOUT_MS` | 60000ms | Timeout idle per TCP client per-request |
+
+**Vincoli di coerenza** (verificati all'avvio):
+- `lowWatermark < highWatermark`
+- `maxBufferPerStream ≤ maxBufferPerTunnel`
+
+#### 3.1.9 utils/tunnelMetrics.js - Metriche e Monitoring
+
+Metriche in-process per monitoraggio stato del tunnel.
+
+```javascript
+// utils/tunnelMetrics.js - Accesso
+const { getMetrics } = require('./utils/tunnelMetrics');
+const metrics = getMetrics();  // Singleton process-wide
+
+// Snapshot completo
+const snap = metrics.snapshot();
+/*
+{
+  label: 'tunnel',
+  ts: '2026-08-25T...',
+  active_tunnels: 2,
+  active_streams: 15,
+  bytes_in_total: 52428800,
+  bytes_out_total: 104857600,
+  backpressure_events_total: 3,
+  buffered_bytes_total: 4194304,
+  buffered_bytes_per_tunnel: { 'tunnel-id': 4194304 },
+  frame_too_large_total: 0,
+  tunnel_disconnect_total: 1,
+  heartbeat_timeout_total: 0,
+  event_loop_lag_ms: { p50: 0.5, p99: 2.1 }
+}
+*/
+```
+
+**Metriche tracciate:**
+
+| Metrica | Tipo | Dove viene aggiornata |
+|---------|------|----------------------|
+| `activeTunnels` | Set | `websocketServer.js` register/unregister |
+| `activeStreams` | Set | `tcpServer.js` register/unregister |
+| `bytesInTotal` | Counter | `streamWriteQueue.js` enqueue |
+| `bytesOutTotal` | Counter | `backpressureSender.js` send callback |
+| `backpressureEventsTotal` | Counter | `streamWriteQueue.js` overflow + `backpressureSender.js` pause |
+| `bufferedBytes` | Map | `backpressureSender.js` (key: `uuid:ws`) + `streamWriteQueue.js` (key: `uuid:tcp`) |
+| `frameTooLargeTotal` | Counter | `websocketServer.js` FrameParser error |
+| `event_loop_lag_ms` | Gauge | `monitorEventLoopDelay()` nativo Node.js |
+
+**Log periodico** (opzionale):
+```javascript
+metrics.startSummaryTimer(30000);  // Logga JSON ogni 30s a livello debug
+```
+
+**Export pubblico:** Le metriche NON sono esposte via HTTP o barrel file. Accessibili solo programmaticamente via `getMetrics().snapshot()`.
 
 ### 3.2 Client Side
 
@@ -510,14 +762,32 @@ else if (headers['cookie']) {
    - Log: "Tunnel [xxx] established successfully"
 ```
 
-**Chiusura (Server → Client)**:
+**Chiusura (Bidirezionale)**:
 
 ```
-1. Quando una connessione TCP termina, il server invia:
-   MESSAGE_TYPE_DATA con payload = "CLOSE"
+DIREZIONE 1: Server → Client (quando la risposta è completa o il target chiude)
+─────────────────────────────────────────────────────────────────────────────
+1. Server riceve 'end' dal TCP socket del target
+2. messageHandler invia MESSAGE_TYPE_DATA con payload = "CLOSE"
+3. Client chiude la connessione TCP verso il target:
+   clients[uuid].socket.end()
 
-2. Client chiude la connessione TCP verso il target:
-   clients[uuid].end()
+DIREZIONE 2: Client → Server (quando il target chiude o overflow)
+─────────────────────────────────────────────────────────────────────────────
+1. Client riceve 'end' dal TCP socket del target, oppure
+   lo streamWriteQueue supera il limite di buffer (overflow)
+2. Client invia MESSAGE_TYPE_DATA con payload = "CLOSE"
+3. Server chiude il socket TCP verso l'HTTP client:
+   conn.socket.end()
+
+OVERFLOW → CLOSE:
+─────────────────────────────────────────────────────────────────────────────
+Quando la coda (streamWriteQueue) supera maxBufferPerStream o
+maxBufferPerTunnel:
+1. La coda si autodistrugge (queue.length = 0, metrics cleared)
+2. Viene inviato un frame CLOSE sull'altro capo del tunnel
+3. Il socket TCP viene distrutto (socket.destroy())
+4. L'altro capo riceve CLOSE e chiude la sua connessione TCP
 ```
 
 ### 4.5 Gestione Errori
@@ -730,6 +1000,29 @@ const HEALTH_TIMEOUT = 45 * 1000;     // 45s - health check
 const RECONNECT_BACKOFF = [1000, 2000, 5000, 10000, 30000];
 ```
 
+### 7.3 Variabili d'Ambiente per Limiti Buffer
+
+Tutti i limiti di backpressure e buffering possono essere configurati via env vars `RWT_*`. I valori vengono risolti una sola volta all'avvio (lazy singleton in `getTunnelLimits()`).
+
+```bash
+# Limiti sender (TCP → WS): controllo flusso con pausa/riprresa
+export RWT_HIGH_WATERMARK=8388608        # 8MB  - pausa producer
+export RWT_LOW_WATERMARK=2097152         # 2MB  - riprende producer
+
+# Frame: limite singolo frame sul wire
+export RWT_MAX_FRAME_SIZE=1048576        # 1MB  - max declared length
+
+# Coda write (WS → TCP): limiti per stream, tunnel, processo
+export RWT_MAX_BUFFER_PER_STREAM=67108864   # 64MB  - coda per-stream
+export RWT_MAX_BUFFER_PER_TUNNEL=268435456 # 256MB - coda per-tunnel
+export RWT_MAX_BUFFER_PER_PROCESS=536870912 # 512MB - warn-only
+
+# Timeout
+export RWT_TCP_IDLE_TIMEOUT_MS=60000     # 60s - idle close TCP client
+```
+
+**Nota**: i default (64MB per-stream, 256MB per-tunnel) supportano transfer fino a 64MB senza configurazione. Per transfer più grandi, alzare `RWT_MAX_BUFFER_PER_STREAM` e `RWT_MAX_BUFFER_PER_TUNNEL`.
+
 ---
 
 ## 8. Diagramma Architetturale Completo
@@ -821,14 +1114,20 @@ const RECONNECT_BACKOFF = [1000, 2000, 5000, 10000, 30000];
 ## Riferimenti
 
 - File sorgente principali:
-  - `server/websocketServer.js` - Server WebSocket
-  - `server/messageHandler.js` - Gestione messaggi
-  - `server/tcpServer.js` - Server TCP
+  - `server/websocketServer.js` - Server WebSocket, FrameParser, metrics
+  - `server/messageHandler.js` - Gestione messaggi, DATA via coda bounded
+  - `server/tcpServer.js` - Server TCP, coalescer, sender pause/resume, chunked re-framing
   - `server/state.js` - Gestione stato
   - `server/constants.js` - Costanti
-  - `client/tunnelClient.js` - Client WebSocket
+  - `client/tunnelClient.js` - Client WebSocket, FrameParser, per-uuid conn, CLOSE bidirezionale
   - `client/proxyServer.js` - Proxy HTTP locale
-  - `client/utils.js` - Utilità protocollo
+  - `client/utils.js` - Utilità protocollo, buildMessageBuffer
+- Moduli nuovi (backpressure/buffering):
+  - `utils/frameParser.js` - Parser incrementale con FrameSizeError
+  - `utils/backpressureSender.js` - Controllo flusso TCP→WS (pause/resume)
+  - `utils/streamWriteQueue.js` - Coda bounded WS→TCP con overflow self-destruct
+  - `utils/tunnelLimits.js` - Limiti configurabili via RWT_* env vars
+  - `utils/tunnelMetrics.js` - Metriche in-process (snapshot, event loop lag)
 - Documenti correlati:
   - `docs/heartbeat-mechanism.md` - Dettagli heartbeat
   - `docs/state-management.md` - Gestione stato

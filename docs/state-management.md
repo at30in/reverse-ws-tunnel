@@ -24,7 +24,14 @@ Each WebSocket server port has its own state object:
         ws: <WebSocket>,
         tcpConnections: {
           "<uuid>": {
-            socket: <net.Socket>
+            socket: <net.Socket>,
+            sender: <BackpressureSender>,   // TCP → WS (request direction)
+            queue: <StreamWriteQueue>,       // WS → TCP (response direction)
+            stats: {
+              bytesIn: 0,         // bytes ricevuti dal target
+              bytesOut: 0,        // bytes inviati al client HTTP
+              startTime: Date     // timestamp creazione stream
+            }
           }
         },
         httpConnections: {}
@@ -46,6 +53,9 @@ Each WebSocket server port has its own state object:
 | `websocketTunnels[tunnelId].ws` | `WebSocket` | The WebSocket connection for this tunnel |
 | `websocketTunnels[tunnelId].tcpConnections` | `Object` | Map of active TCP connections within this tunnel |
 | `websocketTunnels[tunnelId].tcpConnections[uuid].socket` | `net.Socket` | TCP socket for forwarding data |
+| `websocketTunnels[tunnelId].tcpConnections[uuid].sender` | `BackpressureSender` | Controls TCP→WS flow with pause/resume (high/low watermark) |
+| `websocketTunnels[tunnelId].tcpConnections[uuid].queue` | `StreamWriteQueue` | Bounded FIFO queue for WS→TCP with overflow self-destruct |
+| `websocketTunnels[tunnelId].tcpConnections[uuid].stats` | `Object` | Byte counters and creation timestamp per stream |
 | `"3032"` (example) | `Object` | Per-port-key entry for TCP server on port 3032 |
 | `"3032".tcpServer` | `net.Server` | The TCP server listening on port 3032 |
 
@@ -143,3 +153,19 @@ setLogLevel('debug');
 ```
 
 Look for log entries with `[TCP]` and `[CLEANUP]` prefixes for TCP server operations.
+
+## Metrics
+
+The `TunnelMetrics` singleton (`getMetrics()`) tracks runtime state independently from the connection state:
+
+```javascript
+const { getMetrics } = require('./utils/tunnelMetrics');
+const snap = getMetrics().snapshot();
+// snap.active_tunnels, snap.active_streams, snap.bytes_in_total, ...
+```
+
+Key metric buffer keys per stream:
+- `uuid:ws` — bytes buffered in the backpressureSender (TCP→WS direction)
+- `uuid:tcp` — bytes buffered in the streamWriteQueue (WS→TCP direction)
+
+These are aggregated by `getBufferedPerTunnel()` to enforce the per-tunnel cap.
