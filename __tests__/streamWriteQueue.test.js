@@ -111,7 +111,8 @@ describe('streamWriteQueue', () => {
   it('overflows at MAX_BUFFER_PER_STREAM and closes the stream exactly once', () => {
     const socket = makeFakeSocket();
     socket.defaultWriteResult = false; // everything backs up
-    const { queue, overflows } = makeQueue(socket);
+    const TINY_LIMITS = getTunnelLimits({ maxBufferPerStreamBytes: 8 * M });
+    const { queue, overflows } = makeQueue(socket, { limits: TINY_LIMITS });
 
     const chunk5MB = Buffer.alloc(5 * M);
     expect(queue.enqueue(chunk5MB)).toBe(true); // pumped into the kernel socket
@@ -126,11 +127,15 @@ describe('streamWriteQueue', () => {
     const socket = makeFakeSocket();
     socket.defaultWriteResult = false;
     const metrics = new TunnelMetrics();
+    const TINY_LIMITS = getTunnelLimits({
+      maxBufferPerStreamBytes: 8 * M,
+      maxBufferPerTunnelBytes: 32 * M,
+    });
 
-    const { queue: other } = makeQueue(makeFakeSocket(), { metrics }); // sibling stream, same tunnel
+    const { queue: other } = makeQueue(makeFakeSocket(), { metrics, limits: TINY_LIMITS }); // sibling stream, same tunnel
     other._testNoop = true;
 
-    const { queue, overflows } = makeQueue(socket, { metrics });
+    const { queue, overflows } = makeQueue(socket, { metrics, limits: TINY_LIMITS });
 
     // Fill this stream to just under its own cap (7MB of 8MB)
     const chunk1MB = Buffer.alloc(M);

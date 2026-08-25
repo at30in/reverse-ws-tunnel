@@ -1,10 +1,5 @@
 /**
- * Volume & fairness integration tests with RAISED limits for large
- * transfers.  The write-queue (WS→TCP) needs to buffer response data
- * that arrives faster than the entry socket drains; the default 8 MB
- * cap causes overflow for responses > 8 MB.  We raise the per-stream
- * and per-tunnel caps here so that T-A/T-B can push 8–100 MB bodies
- * through without hitting the controllable-close path.
+ * Volume & fairness integration tests:
  *
  *  T-A  single 100MB round-trip must be byte-exact
  *  T-B  10 concurrent 8MB transfers + bounded process memory
@@ -13,11 +8,6 @@
  *
  *  (250MB/500MB runs are gated behind RUN_STRESS_TESTS=1)
  */
-// Raise write-queue caps BEFORE any module require (LIMITS is resolved
-// once at load time).
-process.env.RWT_MAX_BUFFER_PER_STREAM = String(128 * 1024 * 1024); // 128 MB
-process.env.RWT_MAX_BUFFER_PER_TUNNEL = String(256 * 1024 * 1024); // 256 MB
-process.env.RWT_MAX_BUFFER_PER_PROCESS = String(512 * 1024 * 1024); // 512 MB
 const crypto = require('crypto');
 const { startHarness, samplePeak } = require('../helpers/integrationHarness');
 

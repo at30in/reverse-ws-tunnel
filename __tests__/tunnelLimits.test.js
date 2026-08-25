@@ -18,8 +18,8 @@ describe('tunnelLimits', () => {
     expect(limits.highWatermarkBytes).toBe(8 * M);
     expect(limits.lowWatermarkBytes).toBe(2 * M);
     expect(limits.maxFrameSizeBytes).toBe(M);
-    expect(limits.maxBufferPerStreamBytes).toBe(8 * M);
-    expect(limits.maxBufferPerTunnelBytes).toBe(32 * M);
+    expect(limits.maxBufferPerStreamBytes).toBe(64 * M);
+    expect(limits.maxBufferPerTunnelBytes).toBe(256 * M);
     expect(limits.maxBufferPerProcessBytes).toBe(512 * M);
     expect(limits.tcpIdleTimeoutMs).toBe(60000);
     expect(Object.isFrozen(limits)).toBe(true);

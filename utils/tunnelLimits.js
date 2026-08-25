@@ -20,9 +20,9 @@ const DEFAULT_LIMITS = Object.freeze({
   /** Hard cap on a single tunnel frame length field (before allocating). */
   maxFrameSizeBytes: M,
   /** Max bytes queued for one stream (WS-bound or TCP-bound queue). */
-  maxBufferPerStreamBytes: 8 * M,
+  maxBufferPerStreamBytes: 64 * M,
   /** Max bytes queued across all streams of a single tunnel. */
-  maxBufferPerTunnelBytes: 32 * M,
+  maxBufferPerTunnelBytes: 256 * M,
   /** Process-wide safety ceiling (log-only enforcement trigger). */
   maxBufferPerProcessBytes: 512 * M,
   /** Idle close for per-request TCP clients on the agent side. */
