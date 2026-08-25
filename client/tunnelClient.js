@@ -4,7 +4,16 @@ const net = require('net');
 const { v4: uuidv4 } = require('uuid');
 const { buildMessageBuffer } = require('./utils');
 const { logger } = require('../utils/logger');
+const { FrameParser, FrameSizeError } = require('../utils/frameParser');
+const { getTunnelLimits } = require('../utils/tunnelLimits');
+const { getMetrics } = require('../utils/tunnelMetrics');
+const { createBackpressureSender, applyWsBufferGuard } = require('../utils/backpressureSender');
+const { createStreamWriteQueue } = require('../utils/streamWriteQueue');
 const packageJson = require('../package.json');
+
+// Resolved once per process; RWT_* env overrides still apply.
+const LIMITS = getTunnelLimits();
+const METRICS = getMetrics();
 
 const MESSAGE_TYPE_CONFIG = 0x01;
 const MESSAGE_TYPE_DATA = 0x02;
@@ -91,6 +100,9 @@ function connectWebSocket(config) {
         `WS tunnel config sent: TARGET_PORT=${targetPort}, ENTRY_PORT=${tunnelEntryPort}`
       );
 
+      // Catastrophic backstop on the client side as well.
+      applyWsBufferGuard(ws, LIMITS);
+
       // Reset reconnect attempt on successful connection
       reconnectAttempt = 0;
 
@@ -124,31 +136,31 @@ function connectWebSocket(config) {
       ws.send(message);
     });
 
-    let messageBuffer = Buffer.alloc(0);
+    const frameParser = new FrameParser({ maxFrameSizeBytes: LIMITS.maxFrameSizeBytes });
 
     ws.on('message', data => {
       logger.trace(`Received message chunk: ${data.length} bytes`);
-      messageBuffer = Buffer.concat([messageBuffer, data]);
 
-      while (messageBuffer.length >= 4) {
-        const length = messageBuffer.readUInt32BE(0);
-        if (messageBuffer.length < 4 + length) {
-          logger.trace(
-            `Waiting for more data: need ${4 + length} bytes, have ${messageBuffer.length}`
+      let frames;
+      try {
+        frames = frameParser.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      } catch (err) {
+        if (err instanceof FrameSizeError) {
+          METRICS.countFrameTooLarge();
+          logger.warn(
+            `[frame_too_large] declared=${err.declaredLength}B limit=${err.maxFrameSizeBytes}B — closing connection`
           );
-          break;
+          ws.close(1009, 'invalid frame size');
+          return;
         }
+        throw err;
+      }
 
-        const message = messageBuffer.slice(4, 4 + length);
-        messageBuffer = messageBuffer.slice(4 + length);
-
-        const messageTunnelId = message.slice(0, 36).toString().trim();
-        const uuid = message.slice(36, 72).toString();
-        const type = message.readUInt8(72);
-        const payload = message.slice(73);
+      for (let i = 0; i < frames.length; i++) {
+        const { tunnelId: messageTunnelId, uuid, type, payload } = frames[i];
 
         // Validate tunnelId matches expected tunnel
-        if (messageTunnelId !== tunnelId) {
+        if (messageTunnelId.trim() !== tunnelId) {
           logger.warn(
             `Received message for wrong tunnel: ${messageTunnelId} (expected: ${tunnelId})`
           );
@@ -160,24 +172,37 @@ function connectWebSocket(config) {
         );
 
         if (type === MESSAGE_TYPE_DATA) {
-          if (payload.toString() === 'CLOSE') {
+          // Peer closed its entry socket: propagate FIN to the target.
+          if (payload.length === 5 && payload.toString() === 'CLOSE') {
             logger.debug(`Received CLOSE for uuid=${uuid}`);
-            if (clients[uuid]) {
-              clients[uuid].end();
+            const conn = clients[uuid];
+            if (conn) {
+              conn.queue?.destroy();
+              conn.sender?.destroy();
+              conn.socket.end();
+              delete clients[uuid];
+              METRICS.unregisterStream(tunnelId, uuid);
             }
-            return;
+            continue;
           }
 
-          const client =
-            clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
+          const conn = clients[uuid] || createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid);
 
-          if (!client.write(payload)) {
-            logger.debug(`Backpressure on TCP socket for uuid=${uuid}`);
-            client.once('drain', () => {
-              logger.info(`TCP socket drained for uuid=${uuid}`);
-            });
+          // Bounded, order-preserving write toward the target service.
+          if (conn.queue && !conn.queue.isDestroyed()) {
+            if (conn.queue.enqueue(payload)) {
+              if (conn.stats) conn.stats.bytesIn += payload.length;
+            } else {
+              logger.debug(
+                `[buffer_limit_reached] DATA rejected for uuid=${uuid} (stream closing)`
+              );
+            }
+          } else {
+            // Legacy/defensive path (conn without a queue).
+            conn.socket.write(payload);
+            if (conn.stats) conn.stats.bytesIn += payload.length;
           }
-          return;
+          continue;
         } else if (type === MESSAGE_TYPE_APP_PONG) {
           try {
             const pongData = JSON.parse(payload.toString());
@@ -192,7 +217,7 @@ function connectWebSocket(config) {
           } catch (err) {
             logger.error(`Invalid app pong format: ${err.message}`);
           }
-          return;
+          continue;
         }
       }
     });
@@ -204,15 +229,7 @@ function connectWebSocket(config) {
       clearInterval(appPingInterval);
       clearInterval(healthMonitor);
 
-      for (const uuid in clients) {
-        logger.debug(`Closing TCP connection for uuid=${uuid}`);
-        clients[uuid].end();
-        clients[uuid].destroy();
-        delete clients[uuid];
-      }
-
-      // Reset message buffer on close for proper reconnection
-      messageBuffer = Buffer.alloc(0);
+      destroyAllClients('ws_closed');
 
       if (!isClosed && autoReconnect) {
         const delay =
@@ -260,6 +277,12 @@ function heartBeat(ws) {
         logger.trace('Received WebSocket pong');
         clearTimeout(pongTimeout);
       });
+
+      // Safety net against stuck backpressure: reconcile every stream
+      // sender's outstanding bytes with real ws.bufferedAmount.
+      for (const uuid of Object.keys(clients)) {
+        clients[uuid]?.sender?.reconcile();
+      }
     }
   }, PING_INTERVAL);
 
@@ -267,14 +290,66 @@ function heartBeat(ws) {
 }
 
 /**
- * Creates a TCP connection to target service.
+ * Creates a TCP connection to the target service, wired with the bounded
+ * write queue (WS -> target) and the backpressure-aware sender
+ * (target -> WS). Registers the per-stream runtime in the clients map.
  */
 function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
   const hostname = new URL(targetUrl).hostname;
   logger.debug(`Creating TCP connection to ${hostname}:${targetPort} for uuid=${uuid}`);
 
   const client = net.createConnection(targetPort, hostname);
-  clients[uuid] = client;
+  const stats = { openedAt: Date.now(), bytesIn: 0, bytesOut: 0 };
+
+  // target -> WS direction: pause this socket while the WS link is behind.
+  const sender = createBackpressureSender({
+    ws,
+    tunnelId,
+    uuid,
+    limits: LIMITS,
+    metrics: METRICS,
+    onPause: () => {
+      if (!client.destroyed && !client.isPaused?.()) client.pause();
+    },
+    onResume: () => {
+      if (!client.destroyed && client.isPaused?.()) client.resume();
+    },
+  });
+
+  // WS -> target direction: bounded FIFO; overflow closes THIS stream
+  // controllably (CLOSE frame + local teardown), never the whole tunnel.
+  const queue = createStreamWriteQueue({
+    socket: client,
+    tunnelId,
+    uuid,
+    limits: LIMITS,
+    metrics: METRICS,
+    onOverflow: scope => {
+      logger.warn(
+        `[buffer_limit_reached] scope=${scope} uuid=${uuid} — closing stream controllably`
+      );
+      try {
+        sender.send('CLOSE');
+      } catch (_) {}
+      client.destroy();
+    },
+  });
+
+  const conn = { socket: client, queue, sender, stats };
+  clients[uuid] = conn;
+  METRICS.registerStream(tunnelId, uuid);
+
+  function cleanupLocal(reason) {
+    if (clients[uuid] !== conn) return;
+    delete clients[uuid];
+    queue.destroy();
+    sender.destroy();
+    METRICS.unregisterStream(tunnelId, uuid);
+    logger.debug(
+      `[stream_close] reason=${reason} uuid=${uuid} bytesIn=${stats.bytesIn}B ` +
+        `bytesOut=${stats.bytesOut}B duration=${Date.now() - stats.openedAt}ms`
+    );
+  }
 
   client.on('connect', () => {
     logger.info(`TCP connection established for uuid=${uuid}`);
@@ -282,22 +357,49 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
 
   client.on('data', data => {
     logger.trace(`TCP data received for uuid=${uuid}, length=${data.length}`);
-    const message = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_DATA, data);
-    ws.send(message);
+    const sent = sender.send(data);
+    if (sent !== null && stats) {
+      stats.bytesOut += data.length;
+    }
   });
 
   client.on('error', err => {
     logger.error(`TCP error for uuid=${uuid}:`, err);
+    cleanupLocal('error');
     client.destroy();
-    delete clients[uuid];
   });
 
+  // Target sent FIN: propagate it to the server side so its entry socket
+  // can half-close too.
   client.on('end', () => {
     logger.info(`TCP connection ended for uuid=${uuid}`);
-    delete clients[uuid];
+    try {
+      sender.send('CLOSE');
+    } catch (_) {}
+    cleanupLocal('end');
   });
 
-  return client;
+  client.on('close', () => {
+    cleanupLocal('close');
+  });
+
+  return conn;
+}
+
+/**
+ * Tears down every open stream: bounded queues, senders and sockets.
+ */
+function destroyAllClients(reason) {
+  for (const uuid of Object.keys(clients)) {
+    const conn = clients[uuid];
+    logger.debug(`Closing TCP connection for uuid=${uuid} (${reason})`);
+    delete clients[uuid];
+    conn.queue?.destroy();
+    conn.sender?.destroy();
+    try {
+      conn.socket.destroy();
+    } catch (_) {}
+  }
 }
 
 /**
@@ -338,9 +440,7 @@ function startHealthMonitor(ws, tunnelId, pongState) {
 
 function resetClients() {
   // for testing
-  for (const key in clients) {
-    delete clients[key];
-  }
+  destroyAllClients('reset');
 }
 
 module.exports = {

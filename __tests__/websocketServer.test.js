@@ -141,12 +141,12 @@ describe('stopWebSocketServer', () => {
           cb();
         }
       }),
-      close: jest.fn((cb) => {
+      close: jest.fn(cb => {
         if (cb) cb();
       }),
     };
     mockTcpServer = {
-      close: jest.fn((cb) => {
+      close: jest.fn(cb => {
         if (cb) cb();
       }),
     };

@@ -4,6 +4,14 @@ const state = require('./state');
 const { handleParsedMessage } = require('./messageHandler');
 const { PING_INTERVAL } = require('./constants');
 const { logger } = require('../utils/logger');
+const { FrameParser, FrameSizeError } = require('../utils/frameParser');
+const { getTunnelLimits } = require('../utils/tunnelLimits');
+const { getMetrics } = require('../utils/tunnelMetrics');
+const { applyWsBufferGuard } = require('../utils/backpressureSender');
+
+// Resolved once per process; RWT_* env overrides still apply.
+const LIMITS = getTunnelLimits();
+const METRICS = getMetrics();
 
 /**
  * Starts the WebSocket tunnel server.
@@ -29,10 +37,15 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
 
   state[portKey].webSocketServer.on('connection', (ws, req) => {
     let tunnelId = null;
-    let buffer = Buffer.alloc(0);
+    let tunnelRegistered = false;
+    const parser = new FrameParser({ maxFrameSizeBytes: LIMITS.maxFrameSizeBytes });
 
     const clientIp = req.socket.remoteAddress;
     logger.info(`WebSocket connection established from ${clientIp}`);
+
+    // Catastrophic backstop: the ws lib itself refuses to buffer beyond
+    // this; normal flow control is enforced per-stream by our senders.
+    applyWsBufferGuard(ws, LIMITS);
 
     // Setup heartbeat
     ws.isAlive = true;
@@ -53,24 +66,38 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
         ws.ping();
         logger.trace(`Ping sent to client on tunnel [${tunnelId || 'unknown'}]`);
       }
+      // Safety net against stuck backpressure: reconcile every stream
+      // sender's outstanding bytes with real ws.bufferedAmount.
+      const conns = state[portKey]?.websocketTunnels?.[tunnelId]?.tcpConnections;
+      if (conns) {
+        for (const conn of Object.values(conns)) {
+          conn.sender?.reconcile();
+        }
+      }
     }, PING_INTERVAL);
 
     ws.on('message', chunk => {
-      logger.trace(`Received message chunk: ${chunk.length} bytes`);
-      buffer = Buffer.concat([buffer, chunk]);
+      const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      logger.trace(`Received message chunk: ${data.length} bytes`);
 
-      while (buffer.length >= 4) {
-        const length = buffer.readUInt32BE(0);
-        if (buffer.length < 4 + length) break;
+      let frames;
+      try {
+        frames = parser.push(data);
+      } catch (err) {
+        if (err instanceof FrameSizeError) {
+          METRICS.countFrameTooLarge();
+          logger.warn(
+            `[frame_too_large] tunnel=${tunnelId || 'unknown'} declared=${err.declaredLength}B ` +
+              `limit=${err.maxFrameSizeBytes}B — closing connection`
+          );
+          ws.close(1009, 'invalid frame size');
+          return;
+        }
+        throw err;
+      }
 
-        const message = buffer.slice(4, 4 + length);
-        buffer = buffer.slice(4 + length);
-
-        const messageTunnelId = message.slice(0, 36).toString();
-        const uuid = message.slice(36, 72).toString();
-        const type = message.readUInt8(72);
-        const payload = message.slice(73);
-
+      for (let i = 0; i < frames.length; i++) {
+        const { tunnelId: messageTunnelId, uuid, type, payload } = frames[i];
         logger.trace(
           `Parsed message - tunnelId: ${messageTunnelId}, uuid: ${uuid}, type: ${type}, payload length: ${payload.length}`
         );
@@ -101,6 +128,8 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
             }
           }
           tunnelId = messageTunnelId;
+          METRICS.registerTunnel(tunnelId);
+          tunnelRegistered = true;
         }
 
         handleParsedMessage(ws, messageTunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
@@ -109,6 +138,23 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
 
     function cleanup(reason = 'unknown') {
       logger.info(`Cleaning up tunnel [${tunnelId || 'unknown'}] (reason: ${reason})`);
+
+      // Tear down every open stream of this tunnel first: sockets toward
+      // internet clients, their bounded queues and senders. Prevents
+      // leaked sockets/queues when the WSS connection dies mid-transfer.
+      const tunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+      for (const [connUuid, conn] of Object.entries(tunnel?.tcpConnections || {})) {
+        logger.debug(`[stream_close] reason=tunnel_${reason} uuid=${connUuid}`);
+        conn.queue?.destroy();
+        conn.sender?.destroy();
+        try {
+          conn.socket.destroy();
+        } catch (_) {}
+      }
+
+      if (tunnelRegistered && tunnelId) {
+        METRICS.unregisterTunnel(tunnelId);
+      }
 
       if (tunnelId) {
         // Only remove from state if this WebSocket is the one actually registered
@@ -180,11 +226,13 @@ async function stopWebSocketServer(port) {
   }
 
   // 2. Close all TCP servers in per-port state
-  logger.debug(`[CLEANUP] Checking per-port state for TCP servers. Keys: ${Object.keys(serverState).join(', ')}`);
+  logger.debug(
+    `[CLEANUP] Checking per-port state for TCP servers. Keys: ${Object.keys(serverState).join(', ')}`
+  );
   for (const [tcpPort, tcpState] of Object.entries(serverState)) {
     if (tcpPort !== 'webSocketServer' && tcpPort !== 'websocketTunnels' && tcpState?.tcpServer) {
       logger.info(`[CLEANUP] Closing TCP server in per-port state on port ${tcpPort}`);
-      await new Promise((resolve) => {
+      await new Promise(resolve => {
         tcpState.tcpServer.close(() => {
           logger.info(`[CLEANUP] Closed TCP server on port ${tcpPort}`);
           resolve();
@@ -198,15 +246,19 @@ async function stopWebSocketServer(port) {
   // Note: We close ALL servers in registry, not just listening ones, because they may have been
   // closed in per-port cleanup but still exist in global registry
   const globalTcpServerCount = Object.keys(state.tcpServers || {}).length;
-  logger.info(`[CLEANUP] Global tcpServers registry has ${globalTcpServerCount} entries: ${Object.keys(state.tcpServers || {}).join(', ')}`);
+  logger.info(
+    `[CLEANUP] Global tcpServers registry has ${globalTcpServerCount} entries: ${Object.keys(state.tcpServers || {}).join(', ')}`
+  );
   if (state.tcpServers && globalTcpServerCount > 0) {
     for (const [tcpPort, tcpServer] of Object.entries(state.tcpServers)) {
-      logger.info(`[CLEANUP] Checking global TCP server on port ${tcpPort}: exists=${!!tcpServer}, listening=${tcpServer?.listening}`);
+      logger.info(
+        `[CLEANUP] Checking global TCP server on port ${tcpPort}: exists=${!!tcpServer}, listening=${tcpServer?.listening}`
+      );
       // Close any server that exists, regardless of listening state (it may have been closed in per-port cleanup)
       if (tcpServer) {
         if (tcpServer.listening) {
           logger.info(`[CLEANUP] Closing global TCP server on port ${tcpPort} (listening)...`);
-          await new Promise((resolve) => {
+          await new Promise(resolve => {
             tcpServer.close(() => {
               logger.info(`[CLEANUP] Closed global TCP server on port ${tcpPort}`);
               resolve();
@@ -215,7 +267,9 @@ async function stopWebSocketServer(port) {
         } else {
           // Server exists but not listening - it was already closed in per-port cleanup
           // Just log and clear from registry
-          logger.info(`[CLEANUP] Global TCP server on port ${tcpPort} already closed (listening=false), clearing from registry`);
+          logger.info(
+            `[CLEANUP] Global TCP server on port ${tcpPort} already closed (listening=false), clearing from registry`
+          );
         }
       }
     }
@@ -225,7 +279,7 @@ async function stopWebSocketServer(port) {
 
   // 3. Close the main WebSocket server
   if (serverState.webSocketServer) {
-    await new Promise((resolve) => {
+    await new Promise(resolve => {
       serverState.webSocketServer.close(() => {
         logger.debug(`Closed WebSocket server on port ${port}`);
         resolve();

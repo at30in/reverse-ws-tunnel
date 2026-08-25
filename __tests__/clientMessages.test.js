@@ -48,6 +48,7 @@ describe('Client Message Handling', () => {
     mockTcpSocket = {
       on: jest.fn(),
       once: jest.fn(),
+      removeListener: jest.fn(),
       write: jest.fn(),
       end: jest.fn(),
       destroy: jest.fn(),
@@ -174,7 +175,7 @@ describe('Client Message Handling', () => {
         timeCounter += 1000;
         return now;
       });
-      
+
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',

@@ -50,6 +50,7 @@ describe('connectWebSocket', () => {
     mockTcpSocket = {
       on: jest.fn(),
       once: jest.fn(),
+      removeListener: jest.fn(),
       write: jest.fn(),
       end: jest.fn(),
       destroy: jest.fn(),

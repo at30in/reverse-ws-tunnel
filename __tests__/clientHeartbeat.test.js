@@ -68,7 +68,7 @@ describe('Client Heartbeat', () => {
         timeCounter += 1000;
         return now;
       });
-      
+
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',
@@ -103,7 +103,7 @@ describe('Client Heartbeat', () => {
         timeCounter += 1000;
         return now;
       });
-      
+
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',
@@ -140,7 +140,7 @@ describe('Client Heartbeat', () => {
       // This avoids the issue of Date.now() being called many times during fake timer advance
       let timeBase = 50000; // Start at 50s
       const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => timeBase);
-      
+
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',
@@ -153,7 +153,7 @@ describe('Client Heartbeat', () => {
       openCallback();
       // Advance to 25s - health monitor runs but elapsed should be small
       jest.advanceTimersByTime(25000);
-      
+
       // Now manually advance timeBase to simulate passage of time for the pong
       timeBase = 75000; // 50s + 25s = 75s
 
@@ -186,7 +186,7 @@ describe('Client Heartbeat', () => {
       // Use a fixed base time that we manually increment at key points
       let timeBase = 50000; // Start at 50s
       const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => timeBase);
-      
+
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',
@@ -213,7 +213,7 @@ describe('Client Heartbeat', () => {
       jest.useFakeTimers();
       let timeOffset = 50000;
       const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => timeOffset);
-      
+
       const config = {
         tunnelId: 'test-tunnel',
         wsUrl: 'ws://test.com',

@@ -18,12 +18,12 @@ describe('ensureTCPServer', () => {
   let mockTakeoverServer;
 
   beforeEach(() => {
-mockServer = {
+    mockServer = {
       listen: jest.fn((portOrOpts, cb) => {
         if (typeof cb === 'function') cb();
       }),
       on: jest.fn(),
-      close: jest.fn((cb) => {
+      close: jest.fn(cb => {
         if (cb) setTimeout(cb, 0);
       }),
       address: () => ({ port: 3000 }),
@@ -42,7 +42,7 @@ mockServer = {
         }
         return mockTakeoverServer;
       }),
-      close: jest.fn((cb) => {
+      close: jest.fn(cb => {
         if (cb) setTimeout(cb, 0);
       }),
       address: () => ({ port: 3000 }),
@@ -88,15 +88,13 @@ mockServer = {
         }
         return mockErrorServer;
       }),
-      close: jest.fn((cb) => {
+      close: jest.fn(cb => {
         if (cb) setTimeout(cb, 0);
       }),
     };
 
     // First call returns error server (EADDRINUSE), second returns actual server
-    net.createServer
-      .mockReturnValueOnce(mockErrorServer)
-      .mockReturnValueOnce(mockServer);
+    net.createServer.mockReturnValueOnce(mockErrorServer).mockReturnValueOnce(mockServer);
 
     await ensureTCPServer(3000, 'x-tunnel-id', 8080);
 

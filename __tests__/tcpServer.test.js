@@ -22,8 +22,13 @@ describe('startTCPServer', () => {
   beforeEach(() => {
     mockSocket = {
       on: jest.fn(),
+      once: jest.fn(),
       destroy: jest.fn(),
       write: jest.fn(),
+      pause: jest.fn(),
+      resume: jest.fn(),
+      isPaused: () => false,
+      destroyed: false,
       address: () => ({ port: 3000 }),
     };
     mockServer = {
@@ -38,6 +43,7 @@ describe('startTCPServer', () => {
 
     mockWs = {
       send: jest.fn(),
+      readyState: 1, // WebSocket.OPEN
     };
 
     state['8080'] = {
@@ -158,8 +164,8 @@ describe('startTCPServer', () => {
 
     setTimeout(() => {
       endCallback();
-      expect(mockWs.send).toHaveBeenCalledWith(expect.any(Buffer));
-      const sentData = mockWs.send.mock.calls[1][0]; // The first call is for the headers
+      expect(mockWs.send).toHaveBeenCalledTimes(2);
+      const sentData = mockWs.send.mock.calls[1][0]; // The second call is for CLOSE
       expect(sentData.toString()).toContain('CLOSE');
       done();
     }, 100);
@@ -193,7 +199,7 @@ describe('ensureTCPServer', () => {
         }
         return mockTakeoverServer;
       }),
-      close: jest.fn((cb) => {
+      close: jest.fn(cb => {
         if (cb) setTimeout(cb, 0);
       }),
       address: () => ({ port: 3000 }),
