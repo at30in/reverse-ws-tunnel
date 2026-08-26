@@ -8,6 +8,7 @@ const {
 const { ensureTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
 const { buildMessageBuffer } = require('../client/utils');
+const WebSocket = require('ws');
 
 /**
  * Handles a parsed WebSocket message.
@@ -127,6 +128,12 @@ async function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHe
       });
 
       const pongMessage = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_APP_PONG, pongData);
+
+      if (ws.readyState !== WebSocket.OPEN) {
+        logger.debug(`APP_PONG dropped: ws.readyState=${ws.readyState} for tunnel ${tunnelId}`);
+        return;
+      }
+
       ws.send(pongMessage);
 
       logger.trace(`App pong sent: seq=${pingData.seq} for tunnel ${tunnelId}`);

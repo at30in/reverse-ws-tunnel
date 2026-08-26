@@ -115,7 +115,10 @@ describe('startWebSocketServer', () => {
     closeCallback();
 
     expect(mockWs.terminate).toHaveBeenCalled();
-    expect(mockWs.removeAllListeners).toHaveBeenCalled();
+    // removeAllListeners must NOT be called: the ws library uses its own
+    // internal close listener to track clients in WebSocket.Server.clients.
+    // Removing it causes Server.close() to wait forever for a phantom client.
+    expect(mockWs.removeAllListeners).not.toHaveBeenCalled();
     expect(clearIntervalSpy).toHaveBeenCalled();
   });
 });

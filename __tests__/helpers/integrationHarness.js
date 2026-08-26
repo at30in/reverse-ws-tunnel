@@ -109,13 +109,9 @@ async function startHarness({ targetHandler = defaultEcho } = {}) {
     try {
       client.close();
     } catch (_) {}
-    try {
-      stopWebSocketServer();
-    } catch (_) {}
     resetClients();
+    await stopWebSocketServer(wsPort);
     await new Promise(r => target.close(r));
-    // Give sockets a beat to release ports.
-    await new Promise(r => setTimeout(r, 50));
   }
 
   return { wsPort, entryPort, targetPort, tunnelId, client, rawReq, waitReady, close };

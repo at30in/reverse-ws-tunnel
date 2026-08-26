@@ -139,47 +139,53 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
     function cleanup(reason = 'unknown') {
       logger.info(`Cleaning up tunnel [${tunnelId || 'unknown'}] (reason: ${reason})`);
 
-      // Tear down every open stream of this tunnel first: sockets toward
-      // internet clients, their bounded queues and senders. Prevents
-      // leaked sockets/queues when the WSS connection dies mid-transfer.
-      const tunnel = state[portKey]?.websocketTunnels?.[tunnelId];
-      for (const [connUuid, conn] of Object.entries(tunnel?.tcpConnections || {})) {
-        logger.debug(`[stream_close] reason=tunnel_${reason} uuid=${connUuid}`);
-        conn.queue?.destroy();
-        conn.sender?.destroy();
-        try {
-          conn.socket.destroy();
-        } catch (_) {}
-      }
-
-      if (tunnelRegistered && tunnelId) {
-        METRICS.unregisterTunnel(tunnelId);
-      }
-
-      if (tunnelId) {
-        // Only remove from state if this WebSocket is the one actually registered
-        const registeredTunnel = state[portKey]?.websocketTunnels?.[tunnelId];
-        if (registeredTunnel && registeredTunnel.ws === ws) {
-          delete state[portKey].websocketTunnels[tunnelId];
-          logger.debug(`Removed tunnel [${tunnelId}] from state`);
-        } else {
-          logger.debug(
-            `Tunnel [${tunnelId}] not removed - this was a duplicate/rejected connection`
-          );
-        }
-      } else {
-        logger.debug(`No tunnelId assigned yet, nothing to remove from state`);
-      }
-
-      clearInterval(interval);
-
       try {
-        ws.terminate();
-      } catch (e) {
-        logger.debug(`Error in ws.terminate:`, e);
-      }
+        // Tear down every open stream of this tunnel first: sockets toward
+        // internet clients, their bounded queues and senders. Prevents
+        // leaked sockets/queues when the WSS connection dies mid-transfer.
+        const tunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+        for (const [connUuid, conn] of Object.entries(tunnel?.tcpConnections || {})) {
+          logger.debug(`[stream_close] reason=tunnel_${reason} uuid=${connUuid}`);
+          conn.queue?.destroy();
+          conn.sender?.destroy();
+          try {
+            conn.socket.destroy();
+          } catch (_) {}
+        }
 
-      ws.removeAllListeners();
+        if (tunnelRegistered && tunnelId) {
+          METRICS.unregisterTunnel(tunnelId);
+        }
+
+        if (tunnelId) {
+          // Only remove from state if this WebSocket is the one actually registered
+          const registeredTunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+          if (registeredTunnel && registeredTunnel.ws === ws) {
+            delete state[portKey].websocketTunnels[tunnelId];
+            logger.debug(`Removed tunnel [${tunnelId}] from state`);
+          } else {
+            logger.debug(
+              `Tunnel [${tunnelId}] not removed - this was a duplicate/rejected connection`
+            );
+          }
+        } else {
+          logger.debug(`No tunnelId assigned yet, nothing to remove from state`);
+        }
+      } finally {
+        // Always clear the heartbeat timer and terminate the WebSocket,
+        // even if an earlier step throws. Do NOT call removeAllListeners()
+        // here: the ws library uses its own internal close listener to
+        // track clients in WebSocket.Server.clients. Removing it causes
+        // Server.close() to wait forever for a client that can never be
+        // de-registered.
+        clearInterval(interval);
+
+        try {
+          ws.terminate();
+        } catch (e) {
+          logger.debug(`Error in ws.terminate:`, e);
+        }
+      }
     }
 
     ws.on('close', () => {

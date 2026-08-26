@@ -115,6 +115,8 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
         if (!conn) return;
         const c = conn;
         conn = null;
+        bodyCoalescer?.cancel();
+        bodyCoalescer = null;
         c.queue?.destroy();
         c.sender?.destroy();
         if (currentTunnelId) {
@@ -131,7 +133,9 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
         let buf = Buffer.alloc(0);
         let pendingBytes = 0;
         let timer = null;
+        let active = true;
         const flush = () => {
+          if (!active) return;
           if (timer) {
             clearTimeout(timer);
             timer = null;
@@ -143,6 +147,7 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
         };
         return {
           push(chunk) {
+            if (!active) return;
             buf = buf.length ? Buffer.concat([buf, chunk]) : Buffer.from(chunk);
             pendingBytes += chunk.length;
             if (pendingBytes >= BODY_COALESCE_BYTES) {
@@ -152,6 +157,13 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
             }
           },
           flush,
+          cancel() {
+            active = false;
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          },
         };
       }
 
