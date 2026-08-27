@@ -365,7 +365,7 @@ async function forceClosePort(port) {
       takeover.on('error', err => {
         if (err.code === 'EADDRINUSE') {
           // Try again with a different approach - wait a bit
-          setTimeout(() => resolve(true), 100);
+          takeover.close(() => resolve(true));
         } else {
           resolve(false);
         }

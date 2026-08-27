@@ -85,6 +85,7 @@ function createBackpressureSender({
 
     // ws guarantees the callback runs exactly once, also on error/close.
     ws.send(message, err => {
+      if (destroyed) return;
       outstanding -= len;
       if (outstanding < 0) outstanding = 0;
       lastProgressTs = Date.now();
@@ -133,6 +134,7 @@ function createBackpressureSender({
   }
 
   function destroy() {
+    if (destroyed) return;
     destroyed = true;
     outstanding = 0;
     if (metrics) metrics.clearBuffered(bufferKey);

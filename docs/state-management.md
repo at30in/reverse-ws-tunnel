@@ -112,6 +112,15 @@ When `stopWebSocketServer()` is called:
 4. Delete the per-port state entry
 5. Clear the global TCP server registry
 
+### Ownership Guard
+
+The `cleanup()` function in `websocketServer.js` uses an ownership check (`registeredTunnel.ws === ws`) to prevent a rejected duplicate connection from destroying the existing tunnel's resources:
+
+- **Owner WS** (`ownsTunnel === true`): Tears down TCP connections, unregisters metrics, deletes tunnel state
+- **Non-owner WS** (`ownsTunnel === false`): Only clears its own heartbeat interval and terminates its socket
+
+This ensures that when two clients connect with the same `tunnelId`, the rejected duplicate's cleanup does not destroy the existing tunnel's TCP connections, queues, or senders.
+
 ## Important Notes
 
 ### State Reset Issue

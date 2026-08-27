@@ -540,9 +540,9 @@ All errors in `server/*`, `client/*`, and `utils/*` must be caught and logged. N
 
 **Description**: `handleParsedMessage()` is async but not awaited. A rapid CONFIG + DATA sequence may process DATA before the TCP server is ready.
 
-**Classification**: **Acceptable trade-off**. The DATA for a not-yet-ready TCP server is dropped. This is the correct behavior for a half-open tunnel.
+**Classification**: **Eliminated**. The `ws.on('message', ...)` callback is now `async`; each `handleParsedMessage()` call is `await`ed, serializing CONFIG and DATA dispatch. Errors are caught by an outer `try/catch`.
 
-**Regression test required**: No.
+**Regression test required**: Yes — `configDataOrdering.test.js`.
 
 #### R4: Concurrent cleanup
 
@@ -663,6 +663,7 @@ These issues were identified during the repository audit on 2026-08-26. They are
 - **Description**: When `takeover.listen(port)` fails with EADDRINUSE, `takeover.close()` is never called. The native TCP handle remains allocated.
 - **Expected fix direction**: Add `takeover.close()` in the EADDRINUSE error handler.
 - **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). `forceClosePort()` now calls `takeover.close()` in the EADDRINUSE error handler before resolving. The `setTimeout` delay was removed; `takeover.close()` callback resolves the promise directly. Regression test: `tcpServerCleanup.test.js` "takeover.close() is called when listen() gets EADDRINUSE".
 
 ---
 
@@ -673,6 +674,7 @@ These issues were identified during the repository audit on 2026-08-26. They are
 - **Description**: `watchLogConfig()` calls `fs.watchFile()` without a corresponding `fs.unwatchFile()`. If `initLogger()` is called multiple times, multiple watchers accumulate on the same file.
 - **Expected fix direction**: Track the watcher and call `unwatchFile` before creating a new one.
 - **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). Added `watchedFilePath` module-level variable to track the currently watched file. `watchLogConfig()` now calls `fs.unwatchFile(watchedFilePath)` before creating a new watcher. Added `dispose()` function that calls `fs.unwatchFile()` and resets state. Exported `dispose` from the module. Regression tests: `logger.test.js` "should not accumulate watchers when initLogger is called multiple times" and "should call unwatchFile on previous path before watching new path".
 
 ---
 
@@ -683,6 +685,7 @@ These issues were identified during the repository audit on 2026-08-26. They are
 - **Description**: `destroy()` has no `if (destroyed) return;` guard at the top. Double-destroy is harmless (clears already-zero outstanding, calls `clearBuffered` on a deleted key) but is not idempotent.
 - **Expected fix direction**: Add an early-return guard.
 - **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). `destroy()` now has `if (destroyed) return;` guard at the top. The `ws.send` completion callback also checks `if (destroyed) return;` to prevent a pending callback from resurrecting the sender after destroy. Nine regression tests added to `backpressureSender.test.js`: double/triple destroy, send after destroy, pending callback after destroy, reconcile after destroy, destroy during paused state, destroy on never-used sender.
 
 ---
 
@@ -726,6 +729,7 @@ These issues were identified during the repository audit on 2026-08-26. They are
 - **Description**: `server.close()` is called without a callback. If called twice, `ERR_SERVER_NOT_RUNNING` is thrown as an unhandled exception.
 - **Expected fix direction**: Guard with a `closed` flag or wrap in try/catch.
 - **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). `close()` now checks `server.listening` before calling `server.close()`. If the server is not listening (already closed or never started), `close()` returns immediately without calling `server.close()`. Three regression tests added to `proxyServer.test.js`: double-close with strict mock, close after close, close when never listening.
 
 ---
 
@@ -736,6 +740,7 @@ These issues were identified during the repository audit on 2026-08-26. They are
 - **Description**: `ws.once('pong', ...)` inside `setInterval` accumulates orphan listeners if the pong timeout fires before the pong arrives. Listeners are garbage-collected on reconnect.
 - **Expected fix direction**: Store the listener reference and remove it in the timeout path.
 - **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). `heartBeat()` now tracks `pongHandler` and `pongTimeout` references. `cleanupPong()` removes the pong listener and clears the timeout. Called before each new ping cycle, on pong arrival, on timeout, and on WS close. Maximum one pong listener active per cycle. Nine regression tests added to `tunnelClientHeartbeat.test.js`.
 
 ---
 
@@ -746,6 +751,7 @@ These issues were identified during the repository audit on 2026-08-26. They are
 - **Description**: `handleParsedMessage()` is async but not awaited. A rapid CONFIG + DATA sequence may process DATA before the TCP server is ready. DATA is dropped for the not-yet-ready stream.
 - **Expected fix direction**: Consider awaiting `handleParsedMessage` or documenting this as intentional.
 - **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). The `ws.on('message', ...)` callback in `websocketServer.js` is now `async`. Each `handleParsedMessage()` call is `await`ed inside the frame-processing loop, serializing CONFIG and DATA dispatch. An `outer try/catch` around the `await` ensures that errors from `handleParsedMessage` (including DATA handler rejections) are caught and logged, preventing unhandled rejections and keeping the process alive. Regression tests: `configDataOrdering.test.js` (7 tests).
 
 ---
 
@@ -759,6 +765,18 @@ These issues were identified during the repository audit on 2026-08-26. They are
   - `tunnelMetrics.test.js:71-77`: `expect(event_loop_lag_ms.p50).toBeGreaterThanOrEqual(0)`
 - **Expected fix direction**: Replace with specific expected values or meaningful bounds.
 - **Regression test required**: No (test quality improvement).
+
+---
+
+**RWT-KNOWN-012**: Duplicate connection cleanup destroys existing tunnel's TCP connections
+
+- **Severity**: High
+- **Component**: `server/websocketServer.js`
+- **Violates**: RWT-WS-002 ("The existing connection must not be disrupted")
+- **Description**: When a second client connects with the same tunnelId, the server correctly rejects the duplicate (close code 1008). However, the rejected connection's `cleanup()` function destroys all TCP connections belonging to the EXISTING tunnel. The root cause: `tunnelId` is assigned the shared tunnel ID (line 119) before `ws.close()` (line 122). When the close event fires, `cleanup()` looks up the tunnel by `tunnelId` and finds the EXISTING tunnel (the duplicate was never registered). The TCP connection teardown loop (lines 153-160) iterates over `tunnel.tcpConnections` and destroys every queue, sender, and TCP socket — without verifying that `this` WebSocket (`ws`) is the one registered in the tunnel object. The ownership guard at lines 168-169 (`registeredTunnel.ws === ws`) only protects state deletion, not TCP connection teardown.
+- **Expected fix direction**: Add an ownership check before the TCP connection teardown loop: verify `state[portKey]?.websocketTunnels?.[tunnelId]?.ws === ws` before iterating and destroying `tcpConnections`. If the WebSocket does not own the tunnel, skip TCP connection teardown entirely.
+- **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-26). `cleanup()` in `websocketServer.js` now computes `ownsTunnel = registeredTunnel && registeredTunnel.ws === ws` at the top and gates TCP connection teardown, metrics unregister, and state deletion behind it. Duplicate connections only get `clearInterval(interval)` + `ws.terminate()`. Regression tests: `duplicateTunnel.integration.test.js` "duplicate rejection preserves existing tunnel state", "repeated duplicate rejections do not destroy existing tunnel", "owner cleanup still removes tunnel from state" (3 tests).
 
 ---
 
@@ -787,4 +805,11 @@ A release of `@remotelinker/reverse-ws-tunnel` is **not** considered stable if a
 - **2026-08-26** — RWT-KNOWN-001 resolved. `makeBodyCoalescer()` in `tcpServer.js` now tracks an `active` flag; `flush()` and `push()` are no-ops after `cancel()`. `cleanupConn()` calls `bodyCoalescer.cancel()` before destroying queue/sender, preventing zombie timer from recreating a dead TCP connection. Regression test: `tcpServerBodyCoalescer.test.js` (6 tests).
 - **2026-08-26** — RWT-KNOWN-006 resolved. `server/messageHandler.js` APP_PING handler now checks `ws.readyState !== WebSocket.OPEN` before calling `ws.send()`. Regression test: `messageHandler.test.js` (4 tests: OPEN sends pong, CLOSING/CLOSED/CONNECTING do not call send).
 - **2026-08-26** — RWT-KNOWN-005 and RWT-KNOWN-007 resolved. `cleanup()` in `websocketServer.js` is now wrapped in `try/finally`; `ws.removeAllListeners()` removed to preserve ws library internal close listener. `integrationHarness.js` `close()` now passes `wsPort` to `stopWebSocketServer()` and awaits it. Four regression tests added to `harnessClose.integration.test.js`: port freed after close, consecutive harnesses no leak, WS terminate triggers cleanup and stopWebSocketServer resolves, double cleanup idempotent. R4 and R6 race classifications updated to "Eliminated".
+- **2026-08-26** — RWT-KNOWN-002 resolved. `forceClosePort()` in `tcpServer.js` now calls `takeover.close()` in the EADDRINUSE error handler before resolving. The `setTimeout` delay was removed. Regression test: `tcpServerCleanup.test.js` "takeover.close() is called when listen() gets EADDRINUSE".
+- **2026-08-26** — RWT-KNOWN-003 resolved. `watchLogConfig()` in `logger.js` now tracks the currently watched file via `watchedFilePath` and calls `fs.unwatchFile()` before creating a new watcher. Added `dispose()` function for explicit cleanup. Regression tests: `logger.test.js` watcher accumulation and unwatch-before-watch tests.
+- **2026-08-26** — RWT-KNOWN-004 resolved. `destroy()` in `backpressureSender.js` now has `if (destroyed) return;` early-return guard. The `ws.send` completion callback also checks `if (destroyed) return;` to prevent pending callbacks from resurrecting the sender. Nine regression tests added to `backpressureSender.test.js`.
+- **2026-08-26** — RWT-KNOWN-008 resolved. `close()` in `proxyServer.js` now checks `server.listening` before calling `server.close()`. If the server is not listening, `close()` returns immediately. Three regression tests added to `proxyServer.test.js`.
+- **2026-08-26** — RWT-KNOWN-009 resolved. `heartBeat()` in `tunnelClient.js` now tracks `pongHandler` and `pongTimeout` references. `cleanupPong()` removes the pong listener and clears the timeout. Called before each new ping cycle, on pong arrival, on timeout, and on WS close. Maximum one pong listener active per cycle. Nine regression tests added to `tunnelClientHeartbeat.test.js`.
+- **2026-08-26** — RWT-KNOWN-010 resolved. The `ws.on('message', ...)` callback in `websocketServer.js` is now `async`. Each `handleParsedMessage()` call is `await`ed inside the frame loop, serializing CONFIG and DATA dispatch. Errors are caught by an outer `try/catch` preventing unhandled rejections. R3 race classification updated to "Eliminated". Seven regression tests added to `configDataOrdering.test.js`.
+- **2026-08-26** — RWT-KNOWN-012 resolved. `cleanup()` in `websocketServer.js` now checks WebSocket ownership (`registeredTunnel.ws === ws`) before tearing down TCP connections, unregistering metrics, or deleting tunnel state. Rejected duplicates only clear their heartbeat interval and terminate their socket. RWT-WS-002 no longer has a known violation. Regression tests: `duplicateTunnel.integration.test.js` (3 tests: duplicate rejection preserves state, repeated rejections do not destroy, owner cleanup still removes).
 - **2026-08-26** — Initial stability contract created from repository audit. 17 core invariants defined. 11 known issues documented. Test pyramid and AI development rules established.

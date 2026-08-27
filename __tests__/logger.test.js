@@ -1,4 +1,4 @@
-const { logger, initLogger, setLogLevel, getLogLevel } = require('../utils/logger');
+const { logger, initLogger, setLogLevel, getLogLevel, dispose } = require('../utils/logger');
 const fs = require('fs');
 const toml = require('@iarna/toml');
 const path = require('path');
@@ -8,11 +8,13 @@ jest.mock('fs', () => ({
   statSync: jest.fn(),
   readFileSync: jest.fn(),
   watchFile: jest.fn(),
+  unwatchFile: jest.fn(),
 }));
 jest.mock('@iarna/toml');
 
 describe('Logger', () => {
   afterEach(() => {
+    dispose();
     jest.clearAllMocks();
   });
 
@@ -98,6 +100,43 @@ describe('Logger', () => {
       const initialLevel = getLogLevel();
       initLogger();
       expect(getLogLevel()).toBe(initialLevel);
+    });
+  });
+
+  describe('RWT-KNOWN-003 watcher cleanup', () => {
+    it('should not accumulate watchers when initLogger is called multiple times', () => {
+      fs.readFileSync.mockReturnValue('logLevel = "info"');
+      toml.parse.mockReturnValue({ logLevel: 'info' });
+
+      initLogger('/tmp/a');
+      initLogger('/tmp/b');
+      initLogger('/tmp/c');
+
+      // Each call should add one watcher (3 total)
+      expect(fs.watchFile).toHaveBeenCalledTimes(3);
+
+      // But the previous watcher should be removed before adding a new one
+      // After 3 calls: watch(a), unwatch(a)+watch(b), unwatch(b)+watch(c)
+      // So unwatchFile should be called at least 2 times for previous files
+      expect(fs.unwatchFile).toHaveBeenCalled();
+      const unwatchedPaths = fs.unwatchFile.mock.calls.map(c => c[0]);
+      expect(unwatchedPaths).toContain(path.resolve('/tmp/a'));
+      expect(unwatchedPaths).toContain(path.resolve('/tmp/b'));
+    });
+
+    it('should call unwatchFile on previous path before watching new path', () => {
+      fs.readFileSync.mockReturnValue('logLevel = "info"');
+      toml.parse.mockReturnValue({ logLevel: 'info' });
+
+      // First call: no previous watcher
+      initLogger('/tmp/first');
+      expect(fs.unwatchFile).not.toHaveBeenCalled();
+
+      // Second call: should unwatch first before watching second
+      fs.unwatchFile.mockClear();
+      initLogger('/tmp/second');
+      expect(fs.unwatchFile).toHaveBeenCalledTimes(1);
+      expect(fs.unwatchFile).toHaveBeenCalledWith(path.resolve('/tmp/first'));
     });
   });
 });

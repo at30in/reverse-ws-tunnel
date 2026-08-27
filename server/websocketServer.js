@@ -76,7 +76,7 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
       }
     }, PING_INTERVAL);
 
-    ws.on('message', chunk => {
+    ws.on('message', async chunk => {
       const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       logger.trace(`Received message chunk: ${data.length} bytes`);
 
@@ -132,7 +132,13 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
           tunnelRegistered = true;
         }
 
-        handleParsedMessage(ws, messageTunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
+        try {
+          await handleParsedMessage(ws, messageTunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
+        } catch (err) {
+          logger.error(
+            `[handleParsedMessage] Unhandled error for uuid=${uuid}, type=${type}: ${err.message}`
+          );
+        }
       }
     });
 
@@ -140,36 +146,38 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
       logger.info(`Cleaning up tunnel [${tunnelId || 'unknown'}] (reason: ${reason})`);
 
       try {
-        // Tear down every open stream of this tunnel first: sockets toward
-        // internet clients, their bounded queues and senders. Prevents
-        // leaked sockets/queues when the WSS connection dies mid-transfer.
-        const tunnel = state[portKey]?.websocketTunnels?.[tunnelId];
-        for (const [connUuid, conn] of Object.entries(tunnel?.tcpConnections || {})) {
-          logger.debug(`[stream_close] reason=tunnel_${reason} uuid=${connUuid}`);
-          conn.queue?.destroy();
-          conn.sender?.destroy();
-          try {
-            conn.socket.destroy();
-          } catch (_) {}
-        }
+        // Determine ownership: only the registered WebSocket may tear down
+        // the tunnel's TCP connections, metrics, and state entry.
+        // A rejected duplicate must not touch the existing tunnel's resources.
+        const registeredTunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+        const ownsTunnel = registeredTunnel && registeredTunnel.ws === ws;
 
-        if (tunnelRegistered && tunnelId) {
-          METRICS.unregisterTunnel(tunnelId);
-        }
-
-        if (tunnelId) {
-          // Only remove from state if this WebSocket is the one actually registered
-          const registeredTunnel = state[portKey]?.websocketTunnels?.[tunnelId];
-          if (registeredTunnel && registeredTunnel.ws === ws) {
-            delete state[portKey].websocketTunnels[tunnelId];
-            logger.debug(`Removed tunnel [${tunnelId}] from state`);
-          } else {
-            logger.debug(
-              `Tunnel [${tunnelId}] not removed - this was a duplicate/rejected connection`
-            );
+        if (ownsTunnel) {
+          // Tear down every open stream of this tunnel first: sockets toward
+          // internet clients, their bounded queues and senders. Prevents
+          // leaked sockets/queues when the WSS connection dies mid-transfer.
+          const tunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+          for (const [connUuid, conn] of Object.entries(tunnel?.tcpConnections || {})) {
+            logger.debug(`[stream_close] reason=tunnel_${reason} uuid=${connUuid}`);
+            conn.queue?.destroy();
+            conn.sender?.destroy();
+            try {
+              conn.socket.destroy();
+            } catch (_) {}
           }
+
+          if (tunnelRegistered && tunnelId) {
+            METRICS.unregisterTunnel(tunnelId);
+          }
+
+          delete state[portKey].websocketTunnels[tunnelId];
+          logger.debug(`Removed tunnel [${tunnelId}] from state`);
+        } else if (tunnelId) {
+          logger.debug(
+            `Tunnel [${tunnelId}] not cleaned - this was a duplicate/rejected connection`
+          );
         } else {
-          logger.debug(`No tunnelId assigned yet, nothing to remove from state`);
+          logger.debug(`No tunnelId assigned yet, nothing to clean`);
         }
       } finally {
         // Always clear the heartbeat timer and terminate the WebSocket,

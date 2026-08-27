@@ -10,7 +10,7 @@ jest.mock('../utils/logger', () => ({
 }));
 
 const net = require('net');
-const { ensureTCPServer, startTCPServer } = require('../server/tcpServer');
+const { ensureTCPServer, startTCPServer, forceClosePort } = require('../server/tcpServer');
 const state = require('../server/state');
 
 describe('ensureTCPServer', () => {
@@ -126,5 +126,137 @@ describe('ensureTCPServer', () => {
     // Note: The current implementation doesn't register in tcpServers in ensureTCPServer
     // This test verifies the current behavior
     expect(state.tcpServers['3000']).toBeUndefined();
+  });
+});
+
+describe('RWT-KNOWN-002 forceClosePort takeover leak', () => {
+  let mockSocket;
+  let closeCalls;
+
+  beforeEach(() => {
+    closeCalls = [];
+
+    mockSocket = {
+      setTimeout: jest.fn(),
+      destroy: jest.fn(),
+      on: jest.fn((event, cb) => {
+        if (event === 'connect') mockSocket._connectCb = cb;
+        if (event === 'timeout') mockSocket._timeoutCb = cb;
+        if (event === 'error') mockSocket._errorCb = cb;
+        return mockSocket;
+      }),
+      connect: jest.fn(),
+    };
+
+    net.Socket = jest.fn(() => mockSocket);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('takeover.close() is called when listen() gets EADDRINUSE', async () => {
+    const fakeTakeover = {
+      on: jest.fn((event, cb) => {
+        if (event === 'error') fakeTakeover._errorCb = cb;
+        if (event === 'listening') fakeTakeover._listeningCb = cb;
+        return fakeTakeover;
+      }),
+      listen: jest.fn(),
+      close: jest.fn(cb => {
+        closeCalls.push('takeover.close');
+        if (cb) cb();
+      }),
+    };
+    net.createServer.mockReturnValue(fakeTakeover);
+
+    const resultPromise = forceClosePort(3000);
+
+    // Simulate socket connect
+    mockSocket.connect.mockImplementation(() => {
+      setTimeout(() => mockSocket._connectCb(), 0);
+    });
+
+    // Fire connect callback
+    mockSocket._connectCb();
+
+    // Wait for takeover.listen to be called, then simulate EADDRINUSE
+    await new Promise(r => setTimeout(r, 10));
+    fakeTakeover.listen.mockImplementation(() => {
+      setTimeout(() => fakeTakeover._errorCb({ code: 'EADDRINUSE' }), 0);
+    });
+
+    // Trigger listen which triggers error
+    fakeTakeover.listen.mockImplementation(() => {
+      fakeTakeover._errorCb({ code: 'EADDRINUSE' });
+    });
+    fakeTakeover.listen(3000);
+
+    const result = await resultPromise;
+
+    expect(result).toBe(true);
+    expect(fakeTakeover.close).toHaveBeenCalled();
+    expect(closeCalls).toContain('takeover.close');
+  });
+
+  it('takeover.close() is called on success (listening)', async () => {
+    const fakeTakeover = {
+      on: jest.fn((event, cb) => {
+        if (event === 'error') fakeTakeover._errorCb = cb;
+        if (event === 'listening') fakeTakeover._listeningCb = cb;
+        return fakeTakeover;
+      }),
+      listen: jest.fn(),
+      close: jest.fn(cb => {
+        closeCalls.push('takeover.close');
+        if (cb) cb();
+      }),
+    };
+    net.createServer.mockReturnValue(fakeTakeover);
+
+    const resultPromise = forceClosePort(3000);
+
+    mockSocket.connect.mockImplementation(() => {
+      setTimeout(() => mockSocket._connectCb(), 0);
+    });
+
+    mockSocket._connectCb();
+    await new Promise(r => setTimeout(r, 10));
+
+    // Simulate successful listen
+    fakeTakeover.listen.mockImplementation(() => {
+      fakeTakeover._listeningCb();
+    });
+    fakeTakeover.listen(3000);
+
+    const result = await resultPromise;
+
+    expect(result).toBe(true);
+    expect(fakeTakeover.close).toHaveBeenCalled();
+    expect(closeCalls).toContain('takeover.close');
+  });
+
+  it('forceClosePort resolves false on socket error (no port in use)', async () => {
+    const resultPromise = forceClosePort(3000);
+
+    mockSocket.connect.mockImplementation(() => {
+      setTimeout(() => mockSocket._errorCb(new Error('conn refused')), 0);
+    });
+    mockSocket._errorCb(new Error('conn refused'));
+
+    const result = await resultPromise;
+    expect(result).toBe(false);
+  });
+
+  it('forceClosePort resolves false on socket timeout', async () => {
+    const resultPromise = forceClosePort(3000);
+
+    mockSocket.connect.mockImplementation(() => {
+      setTimeout(() => mockSocket._timeoutCb(), 0);
+    });
+    mockSocket._timeoutCb();
+
+    const result = await resultPromise;
+    expect(result).toBe(false);
   });
 });

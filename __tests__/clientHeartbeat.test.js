@@ -39,6 +39,7 @@ describe('Client Heartbeat', () => {
     mockWs = {
       on: jest.fn(),
       once: jest.fn(),
+      removeListener: jest.fn(),
       send: jest.fn(),
       ping: jest.fn(),
       terminate: jest.fn(),

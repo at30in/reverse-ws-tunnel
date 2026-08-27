@@ -1,6 +1,8 @@
 # Problemi Aperti — v1.1.0
 
 > Documento generato il 2026-08-25. Elenco dei rischi residui e problemi noti dopo le modifiche di backpressure/buffering.
+>
+> **Aggiornamento 2026-08-26**: RWT-KNOWN-012 (duplicate cleanup destroys existing tunnel resources) è stato risolto. Vedere STABILITY_CONTRACT.md per i dettagli.
 
 ---
 

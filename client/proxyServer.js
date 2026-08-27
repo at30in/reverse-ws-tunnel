@@ -74,6 +74,7 @@ function startHttpProxyServer(targetUrl, allowInsecureCerts = false) {
       return assignedPort || server.address()?.port;
     },
     close: () => {
+      if (!server.listening) return;
       logger.info('Closing proxy server');
       server.close();
     },

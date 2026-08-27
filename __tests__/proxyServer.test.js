@@ -26,11 +26,13 @@ describe('startHttpProxyServer', () => {
     mockServer = {
       listen: jest.fn((port, cb) => {
         mockServer.address = () => ({ port: 12345 });
+        mockServer.listening = true;
         cb();
       }),
       on: jest.fn(),
       address: () => ({ port: 0 }),
       close: jest.fn(),
+      listening: false,
     };
     http.createServer.mockReturnValue(mockServer);
 
@@ -106,5 +108,77 @@ describe('startHttpProxyServer', () => {
     requestCallback(mockReq, mockRes);
     expect(mockRes.writeHead).toHaveBeenCalledWith(502);
     expect(mockRes.end).toHaveBeenCalledWith('Bad gateway');
+  });
+});
+
+describe('RWT-KNOWN-008 proxyServer double-close', () => {
+  it('double close() does not throw even when server.close() throws on second call', () => {
+    let closeCount = 0;
+    const strictServer = {
+      listen: jest.fn((port, cb) => {
+        strictServer.listening = true;
+        cb();
+      }),
+      on: jest.fn(),
+      address: () => ({ port: 9999 }),
+      close: jest.fn(() => {
+        closeCount++;
+        strictServer.listening = false;
+        if (closeCount > 1) {
+          const err = new Error('Server is not running.');
+          err.code = 'ERR_SERVER_NOT_RUNNING';
+          throw err;
+        }
+      }),
+      listening: false,
+    };
+    http.createServer.mockReturnValue(strictServer);
+
+    const proxy = startHttpProxyServer('http://target.com');
+    proxy.close();
+    // Second close must not throw ERR_SERVER_NOT_RUNNING
+    expect(() => proxy.close()).not.toThrow();
+  });
+
+  it('close() on already-closed server is idempotent', () => {
+    let closeCount = 0;
+    const testServer = {
+      listen: jest.fn((port, cb) => {
+        testServer.listening = true;
+        cb();
+      }),
+      on: jest.fn(),
+      address: () => ({ port: 8888 }),
+      close: jest.fn(() => {
+        closeCount++;
+        testServer.listening = false;
+        if (closeCount > 1) {
+          const err = new Error('Server is not running.');
+          err.code = 'ERR_SERVER_NOT_RUNNING';
+          throw err;
+        }
+      }),
+      listening: false,
+    };
+    http.createServer.mockReturnValue(testServer);
+
+    const proxy = startHttpProxyServer('http://target.com');
+    proxy.close();
+    expect(() => proxy.close()).not.toThrow();
+  });
+
+  it('close() is a no-op when server was never listening', () => {
+    const neverListenServer = {
+      listen: jest.fn(),
+      on: jest.fn(),
+      address: () => ({ port: 0 }),
+      close: jest.fn(),
+      listening: false,
+    };
+    http.createServer.mockReturnValue(neverListenServer);
+
+    const proxy = startHttpProxyServer('http://target.com');
+    expect(() => proxy.close()).not.toThrow();
+    expect(neverListenServer.close).not.toHaveBeenCalled();
   });
 });

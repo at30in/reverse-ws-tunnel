@@ -205,3 +205,118 @@ describe('backpressureSender', () => {
     expect(() => applyWsBufferGuard(stubborn, getTunnelLimits())).not.toThrow();
   });
 });
+
+describe('RWT-KNOWN-004 destroy idempotency', () => {
+  it('double destroy does not throw and state remains destroyed', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws);
+
+    sender.destroy();
+    expect(sender.isDestroyed()).toBe(true);
+
+    // Second destroy must not throw
+    expect(() => sender.destroy()).not.toThrow();
+    expect(sender.isDestroyed()).toBe(true);
+    expect(sender.getOutstanding()).toBe(0);
+  });
+
+  it('triple destroy does not throw and metrics stay clean', () => {
+    const ws = makeFakeWs();
+    const metrics = new TunnelMetrics();
+    const { sender } = makeSender(ws, { metrics });
+
+    sender.send(CHUNK);
+    sender.destroy();
+    sender.destroy();
+    sender.destroy();
+
+    expect(sender.isDestroyed()).toBe(true);
+    expect(sender.getOutstanding()).toBe(0);
+    expect(metrics.getBuffered(sender.bufferKey)).toBe(0);
+  });
+
+  it('send() returns null after destroy', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws);
+
+    sender.destroy();
+    expect(sender.send(CHUNK)).toBeNull();
+    expect(sender.getOutstanding()).toBe(0);
+  });
+
+  it('send() returns null after double destroy', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws);
+
+    sender.destroy();
+    sender.destroy();
+    expect(sender.send(CHUNK)).toBeNull();
+  });
+
+  it('pending ws.send callback after destroy does not resurrect sender', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws);
+
+    // Send a message — ws.send callback is pending
+    sender.send(CHUNK);
+    expect(sender.getOutstanding()).toBe(CHUNK.length + WIRE_OVERHEAD);
+
+    // Destroy before callback fires
+    sender.destroy();
+    expect(sender.getOutstanding()).toBe(0);
+
+    // Flush the pending callback — it should not resurrect outstanding
+    ws.flush();
+    // outstanding should remain 0 (callback decrements but clamps at 0)
+    expect(sender.getOutstanding()).toBe(0);
+    expect(sender.isDestroyed()).toBe(true);
+  });
+
+  it('send() is a no-op after destroy even with OPEN ws', () => {
+    const ws = makeFakeWs();
+    ws.readyState = 1; // OPEN
+    const { sender } = makeSender(ws);
+
+    sender.destroy();
+    const result = sender.send(CHUNK);
+    expect(result).toBeNull();
+    // ws.send should not have been called
+    expect(ws.sentMessages).toHaveLength(0);
+  });
+
+  it('reconcile() returns false after destroy', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws, { staleMs: 0 });
+
+    while (!sender.isPaused()) sender.send(CHUNK);
+    sender.destroy();
+
+    expect(sender.reconcile()).toBe(false);
+  });
+
+  it('destroy during paused state does not fire onResume', () => {
+    const ws = makeFakeWs();
+    const { sender, events } = makeSender(ws);
+
+    while (!sender.isPaused()) sender.send(CHUNK);
+    expect(sender.isPaused()).toBe(true);
+    expect(events).toEqual(['pause']);
+
+    sender.destroy();
+    // onResume must NOT have been called
+    expect(events).toEqual(['pause']);
+    expect(sender.isPaused()).toBe(false);
+    expect(sender.isDestroyed()).toBe(true);
+  });
+
+  it('destroy() on never-used sender is safe', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws);
+
+    expect(sender.isDestroyed()).toBe(false);
+    sender.destroy();
+    expect(sender.isDestroyed()).toBe(true);
+    expect(sender.getOutstanding()).toBe(0);
+    expect(sender.send(CHUNK)).toBeNull();
+  });
+});

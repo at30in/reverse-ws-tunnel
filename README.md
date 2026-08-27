@@ -30,32 +30,24 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 
 ---
 
-## ✨ v1.0.11 - What's New
-
-### ✨ New Features
-- **stopWebSocketServer(port)**: Added new function to properly stop and cleanup the WebSocket server
-  - Closes all active WebSocket connections (triggering cleanup of heartbeat intervals)
-  - Closes all TCP servers registered in state
-  - Cleans up state for the specified port
-  - Gracefully handles already-stopped servers (no errors)
+## ✨ v1.1.0 - Stability & Reliability
 
 ### 🐛 Bug Fixes
-- **Heartbeat cleanup**: Fixed issue where setInterval for heartbeat was not properly cleaned up when server stopped
-- **Node-RED integration**: Added cleanup on startup to handle cases where previous deployment didn't cleanup properly
-- **TCP server connection hang**: Fixed critical issue where TCP connections would hang indefinitely
-  - Removed `pauseOnConnect: true` option from TCP server configuration
-  - This option was added in error - it pauses sockets on connect and requires manual `socket.resume()`
-  - The fix restores proper connection flow while keeping `reuseAddr: true` for port reuse on restart
-- **TCP server port reuse**: Fixed "EADDRINUSE" error when client reconnects after Node-RED restart
-  - Now checks if TCP server is actually listening (`server.listening`) before skipping creation
-  - Previously only checked if state entry existed, not if server was active
-- **TCP server global registry**: Added global tcpServers registry to track TCP servers even when not in state
-  - When stopWebSocketServer is called, now closes ALL TCP servers in global registry
-  - When creating new TCP server, checks global registry and closes stale servers before creating new one
+- **bodyCoalescer zombie timer**: Prevented zombie timers keeping event loop alive after cleanup
+- **forceClosePort takeover leak**: Leaked takeover servers on EADDRINUSE are now closed
+- **Logger watcher cleanup**: File watchers are properly removed before creating new ones
+- **backpressureSender double-destroy**: `destroy()` is now idempotent — no double-close of socket
+- **cleanup try/finally**: WS close always runs even if TCP teardown throws
+- **ws.send readyState guard**: APP_PING checks socket is OPEN before sending
+- **harness await stopWebSocketServer**: Integration harness awaits port cleanup
+- **proxyServer double-close**: Checks `server.listening` before close to prevent EADDRINUSE
+- **pong listener accumulation**: Removes old pong listener before registering new heartbeat cycle
+- **CONFIG/DATA frame ordering**: WebSocket message handler is now async — CONFIG completes before DATA is processed
+- **Duplicate cleanup destroys existing tunnel (KNOWN-012)**: `cleanup()` now checks WebSocket ownership before tearing down TCP connections — rejected duplicates no longer destroy the existing tunnel's resources
 
 ### 🔧 Improvements
-- **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
-- **State management**: Improved state cleanup to prevent stale entries after server restart
+- **Test suite**: 28 suites, 201 tests (was 20 suites, 122 tests)
+- **STABILITY_CONTRACT.md**: All RWT-KNOWN issues resolved, all RWT-* invariants covered by regression tests
 
 ---
 

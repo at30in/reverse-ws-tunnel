@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.0] - 2026-08-25
+## [1.1.0] - 2026-08-26
 
 ### ✨ New Features
 - **Bounded backpressure system**: Complete flow control for TCP↔WS in both directions
@@ -13,23 +13,47 @@ All notable changes to this project will be documented in this file.
 - **Per-tunnel metrics**: `TunnelMetrics` singleton with `snapshot()`, event loop lag, buffer accounting
 - **Bidirectional CLOSE**: Server and client both send CLOSE on overflow or socket end
 - **Chunked TE re-framing**: Fixes `http-parser-js` de-chunking bug where headers were forwarded with `Transfer-Encoding: chunked` but body was already de-chunked
+- **stopWebSocketServer(port)**: Added new function to properly stop and cleanup the WebSocket server
+  - Closes all active WebSocket connections (triggering cleanup of heartbeat intervals)
+  - Closes all TCP servers registered in state
+  - Cleans up state for the specified port
+  - Gracefully handles already-stopped servers (no errors)
 
 ### 🐛 Bug Fixes
 - **Wire format compatibility**: Server now rewrites headers and re-chunks body when upstream sends `Transfer-Encoding: chunked`
 - **CLOSE handling**: Server now calls `conn.socket.end()` when receiving CLOSE from client (previously only client did this)
 - **Frame parser overflow**: `FrameSizeError` thrown before allocation when declared frame size exceeds limit
+- **Heartbeat cleanup**: Fixed issue where setInterval for heartbeat was not properly cleaned up when server stopped
+- **Node-RED integration**: Added cleanup on startup to handle cases where previous deployment didn't cleanup properly
+- **TCP server connection hang**: Removed `pauseOnConnect: true` option — restores proper connection flow while keeping `reuseAddr: true`
+- **TCP server port reuse**: Fixed "EADDRINUSE" error when client reconnects — now checks `server.listening` before skipping creation
+- **TCP server global registry**: Added global tcpServers registry to track TCP servers even when not in state
+- **bodyCoalescer zombie timer (KNOWN-001)**: `makeBodyCoalescer()` now tracks an `active` flag and exposes `cancel()` to prevent zombie timers keeping event loop alive
+- **forceClosePort takeover leak (KNOWN-002)**: `forceClosePort()` now calls `takeover.close()` inside the EADDRINUSE handler, preventing leaked takeover servers
+- **Logger watcher cleanup (KNOWN-003)**: Logger now tracks `watchedFilePath` and calls `fs.unwatchFile()` before creating a new watcher. Added `dispose()` export for explicit cleanup
+- **backpressureSender double-destroy (KNOWN-004)**: `destroy()` is now idempotent — early-return guard prevents double-close of underlying socket and double-invocation of callback
+- **cleanup try/finally (KNOWN-005)**: `cleanup()` in websocketServer is wrapped in try/finally so WS close always runs even if TCP teardown throws
+- **ws.send readyState guard (KNOWN-006)**: APP_PING handler now checks `ws.readyState === WebSocket.OPEN` before calling `ws.send()`
+- **harness await stopWebSocketServer (KNOWN-007)**: Integration harness `close()` now passes `wsPort` to `stopWebSocketServer` and awaits it, ensuring ports are freed before the next test
+- **proxyServer double-close (KNOWN-008)**: `proxyServer.close()` now checks `server.listening` before calling `server.close()`, preventing EADDRINUSE on harness teardown
+- **pong listener accumulation (KNOWN-009)**: `heartBeat()` now tracks `pongHandler`/`pongTimeout` and calls `ws.removeListener('pong', ...)` before registering a new cycle — no more listener leak on reconnect
+- **CONFIG/DATA frame ordering (KNOWN-010)**: `ws.on('message', ...)` in websocketServer is now `async` and each `handleParsedMessage()` is `await`ed, serializing frame dispatch so CONFIG completes before DATA is processed
+- **Duplicate cleanup destroys existing tunnel resources (KNOWN-012)**: `cleanup()` now checks WebSocket ownership (`registeredTunnel.ws === ws`) before tearing down TCP connections, unregistering metrics, or deleting tunnel state. Rejected duplicates only clear their own heartbeat interval and terminate their socket.
 
 ### 🔧 Improvements
 - **Default buffer limits raised**: `maxBufferPerStreamBytes` 8MB → 64MB, `maxBufferPerTunnelBytes` 32MB → 256MB — transfers up to 64MB work without configuration
 - **ws.maxBufferedAmount disabled**: `applyWsBufferGuard()` is now a no-op — the ws library's built-in guard destroys sockets too aggressively for large transfers
-- **Test suite expanded**: 20 suites, 122 tests (was 16 suites, 105 tests)
-  - New: `wireCompat`, `backpressureSender`, `streamWriteQueue`, `tunnelLimits`, `tunnelMetrics`
+- **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
+- **State management**: Improved state cleanup to prevent stale entries after server restart
+- **Test suite**: 28 suites, 201 tests (was 16 suites, 105 tests)
+  - New: `configDataOrdering` (7), `tunnelClientHeartbeat` (9), `tcpServerCleanup` (8), `tcpServerLifecycle` (9), `tcpServerBodyCoalescer` (10), `backpressureSender` (20), `logger` (11), `proxyServer` (5+3), `harnessClose` (4), `duplicateTunnel` (7: RWT-WS-002 + RWT-KNOWN-012), `lifecycle` (9)
   - Integration: `volumes` (100MB, 10×8MB, starvation, slow reader, 60 streams), `resilience` (disconnect+reconnect, FIN propagation), `backpressure` (tiny limits, overflow)
 
 ### 📚 Documentation
 - Updated `docs/architecture.md`: added sections for FrameParser, backpressureSender, streamWriteQueue, tunnelLimits, tunnelMetrics, bidirectional CLOSE, RWT_* env vars
 - Updated `docs/state-management.md`: added sender/queue/stats to tcpConnections structure
 - Updated `README.md`: added backpressure configuration section with env var table
+- Updated `STABILITY_CONTRACT.md`: all RWT-KNOWN-001 through RWT-KNOWN-012 marked RESOLVED; R3/R4/R6 races eliminated
 
 ## [1.0.11] - 2026-05-03
 
@@ -221,6 +245,8 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+[1.1.0]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.11...v1.1.0
+[1.0.11]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.7...v1.0.8

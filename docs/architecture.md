@@ -874,6 +874,34 @@ Il sistema usa una mappatura dinamica:
 ### 5.3 Pulizia e Chiusura
 
 ```javascript
+// server/websocketServer.js - cleanup()
+
+// Guardia di ownership: solo il WS registrato può teardownare le risorse del tunnel
+const registeredTunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+const ownsTunnel = registeredTunnel && registeredTunnel.ws === ws;
+
+if (ownsTunnel) {
+  // 1. Chiude tutte le connessioni TCP del tunnel
+  for (const [connUuid, conn] of Object.entries(tunnel?.tcpConnections || {})) {
+    conn.queue?.destroy();
+    conn.sender?.destroy();
+    conn.socket.destroy();
+  }
+
+  // 2. Deregistra le metriche
+  METRICS.unregisterTunnel(tunnelId);
+
+  // 3. Rimuove il tunnel dallo state
+  delete state[portKey].websocketTunnels[tunnelId];
+} else if (tunnelId) {
+  // Connessione rifiutata (duplicate) — non toccare le risorse del tunnel esistente
+  logger.debug('Tunnel not cleaned - this was a duplicate/rejected connection');
+}
+
+// 4. Sempre: pulisci interval e termina il WS
+clearInterval(interval);
+ws.terminate();
+
 // server/websocketServer.js - stopWebSocketServer()
 
 // 1. Chiude tutte le connessioni WebSocket attive

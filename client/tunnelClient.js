@@ -48,6 +48,7 @@ function connectWebSocket(config) {
   let pingInterval;
   let appPingInterval;
   let healthMonitor;
+  let cleanupPong;
   let isClosed = false;
   let reconnectAttempt = 0;
 
@@ -107,7 +108,7 @@ function connectWebSocket(config) {
       reconnectAttempt = 0;
 
       eventEmitter.emit('connected');
-      ({ pingInterval } = heartBeat(ws));
+      ({ pingInterval, cleanupPong } = heartBeat(ws));
 
       // Avviare heartbeat applicativo
       appPingInterval = startAppHeartbeat(ws, tunnelId, pingStateCallbacks);
@@ -228,6 +229,7 @@ function connectWebSocket(config) {
       clearInterval(pingInterval);
       clearInterval(appPingInterval);
       clearInterval(healthMonitor);
+      if (cleanupPong) cleanupPong();
 
       destroyAllClients('ws_closed');
 
@@ -263,20 +265,40 @@ function connectWebSocket(config) {
  * Sets up heartbeat (ping/pong) mechanism.
  */
 function heartBeat(ws) {
+  let pongHandler = null;
+  let pongTimeout = null;
+
+  const cleanupPong = () => {
+    if (pongTimeout) {
+      clearTimeout(pongTimeout);
+      pongTimeout = null;
+    }
+    if (pongHandler) {
+      ws.removeListener('pong', pongHandler);
+      pongHandler = null;
+    }
+  };
+
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
+      cleanupPong();
+
       ws.ping();
       logger.trace('Sent WebSocket ping');
 
-      const pongTimeout = setTimeout(() => {
+      pongTimeout = setTimeout(() => {
         logger.warn('No pong received. Terminating connection.');
+        cleanupPong();
         ws.terminate();
       }, PONG_WAIT);
 
-      ws.once('pong', () => {
+      pongHandler = () => {
         logger.trace('Received WebSocket pong');
         clearTimeout(pongTimeout);
-      });
+        pongTimeout = null;
+        pongHandler = null;
+      };
+      ws.once('pong', pongHandler);
 
       // Safety net against stuck backpressure: reconcile every stream
       // sender's outstanding bytes with real ws.bufferedAmount.
@@ -286,7 +308,7 @@ function heartBeat(ws) {
     }
   }, PING_INTERVAL);
 
-  return { pingInterval };
+  return { pingInterval, cleanupPong };
 }
 
 /**

@@ -6,6 +6,7 @@ const TOML = require('@iarna/toml');
 const FILE_CONFIG_NAME = 'config.toml';
 
 let configFilePath = null;
+let watchedFilePath = null;
 let logContext = null; // Can be set to 'CLIENT', 'SERVER', or any custom prefix
 
 const customLevels = {
@@ -88,12 +89,18 @@ function loadConfigFromFile() {
 }
 
 function watchLogConfig() {
+  if (watchedFilePath) {
+    fs.unwatchFile(watchedFilePath);
+  }
+
   fs.watchFile(configFilePath, { interval: 1000 }, (curr, prev) => {
     if (curr.mtime !== prev.mtime) {
       logger.debug('Detected change in log configuration file.');
       loadConfigFromFile();
     }
   });
+
+  watchedFilePath = configFilePath;
 }
 
 function initLogger(customPath = null) {
@@ -126,6 +133,14 @@ function initLogger(customPath = null) {
 
 // initLogger();
 
+function dispose() {
+  if (watchedFilePath) {
+    fs.unwatchFile(watchedFilePath);
+    watchedFilePath = null;
+  }
+  configFilePath = null;
+}
+
 module.exports = {
   logger,
   initLogger,
@@ -133,4 +148,5 @@ module.exports = {
   getLogLevel,
   setLogContext,
   getLogContext,
+  dispose,
 };
