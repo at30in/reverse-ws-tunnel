@@ -74,7 +74,9 @@ describe('RWT-RES-001 / RWT-RES-002 lifecycle (real queue + sender)', () => {
         if (!mockSocket._listeners[event]) return;
         mockSocket._listeners[event] = mockSocket._listeners[event].filter(fn => fn !== cb);
       }),
-      destroy: jest.fn(() => { mockSocket.destroyed = true; }),
+      destroy: jest.fn(() => {
+        mockSocket.destroyed = true;
+      }),
       write: jest.fn(() => true),
       pause: jest.fn(),
       resume: jest.fn(),

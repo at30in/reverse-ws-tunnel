@@ -9,10 +9,21 @@
 const { monitorEventLoopDelay } = require('perf_hooks');
 const { logger } = require('./logger');
 
+/**
+ * @typedef {Object} TunnelInfo
+ * @property {number} connectedAt - Date.now() when the tunnel was registered
+ * @property {string} remoteAddress - Client IP from the WS upgrade request
+ * @property {number} streamCount - Number of active TCP streams
+ * @property {number} bytesIn - Total bytes received from the tunnel (WS → TCP)
+ * @property {number} bytesOut - Total bytes sent to the tunnel (TCP → WS)
+ * @property {string} agentVersion - Client library version from CONFIG message
+ */
+
 class TunnelMetrics {
   constructor({ label = 'tunnel' } = {}) {
     this.label = label;
-    this.activeTunnels = new Set();
+    /** @type {Map<string, TunnelInfo>} */
+    this.activeTunnels = new Map();
     this.activeStreams = new Set(); // `${tunnelId}/${uuid}`
     this.bytesInTotal = 0;
     this.bytesOutTotal = 0;
@@ -31,8 +42,16 @@ class TunnelMetrics {
     this._summaryTimer = null;
   }
 
-  registerTunnel(tunnelId) {
-    this.activeTunnels.add(String(tunnelId));
+  registerTunnel(tunnelId, { remoteAddress = '' } = {}) {
+    const id = String(tunnelId);
+    this.activeTunnels.set(id, {
+      connectedAt: Date.now(),
+      remoteAddress,
+      streamCount: 0,
+      bytesIn: 0,
+      bytesOut: 0,
+      agentVersion: 'unknown',
+    });
   }
 
   unregisterTunnel(tunnelId) {
@@ -45,12 +64,24 @@ class TunnelMetrics {
     this._dropBufferedForTunnel(id);
   }
 
+  setTunnelMeta(tunnelId, { agentVersion } = {}) {
+    const info = this.activeTunnels.get(String(tunnelId));
+    if (!info) return;
+    if (agentVersion !== undefined) info.agentVersion = agentVersion;
+  }
+
   registerStream(tunnelId, uuid) {
-    this.activeStreams.add(`${String(tunnelId)}/${String(uuid)}`);
+    const id = String(tunnelId);
+    this.activeStreams.add(`${id}/${String(uuid)}`);
+    const info = this.activeTunnels.get(id);
+    if (info) info.streamCount++;
   }
 
   unregisterStream(tunnelId, uuid) {
-    this.activeStreams.delete(`${String(tunnelId)}/${String(uuid)}`);
+    const id = String(tunnelId);
+    this.activeStreams.delete(`${id}/${String(uuid)}`);
+    const info = this.activeTunnels.get(id);
+    if (info && info.streamCount > 0) info.streamCount--;
   }
 
   _dropBufferedForTunnel(tunnelId) {
@@ -98,9 +129,16 @@ class TunnelMetrics {
     return { total, perTunnel };
   }
 
-  addTraffic(bytesIn = 0, bytesOut = 0) {
+  addTraffic(bytesIn = 0, bytesOut = 0, tunnelId = null) {
     this.bytesInTotal += bytesIn;
     this.bytesOutTotal += bytesOut;
+    if (tunnelId) {
+      const info = this.activeTunnels.get(String(tunnelId));
+      if (info) {
+        info.bytesIn += bytesIn;
+        info.bytesOut += bytesOut;
+      }
+    }
   }
 
   countBackpressure() {
@@ -130,10 +168,15 @@ class TunnelMetrics {
 
   snapshot() {
     const { total, perTunnel } = this.getBufferedPerTunnel();
+    const active_tunnel_ids = [...this.activeTunnels.keys()];
+    const tunnels_detail = Object.fromEntries(
+      active_tunnel_ids.map(id => [id, { ...this.activeTunnels.get(id) }])
+    );
     return {
       label: this.label,
       ts: new Date().toISOString(),
       active_tunnels: this.activeTunnels.size,
+      active_tunnel_ids,
       active_streams: this.activeStreams.size,
       bytes_in_total: this.bytesInTotal,
       bytes_out_total: this.bytesOutTotal,
@@ -144,6 +187,7 @@ class TunnelMetrics {
       tunnel_disconnect_total: this.tunnelDisconnectTotal,
       heartbeat_timeout_total: this.heartbeatTimeoutTotal,
       event_loop_lag_ms: this._loopLagPercentiles(),
+      tunnels_detail,
     };
   }
 

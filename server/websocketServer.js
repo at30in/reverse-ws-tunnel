@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 const { Buffer } = require('buffer');
 const state = require('./state');
 const { handleParsedMessage } = require('./messageHandler');
-const { PING_INTERVAL } = require('./constants');
+const { PING_INTERVAL, MESSAGE_TYPE_CONFIG } = require('./constants');
 const { logger } = require('../utils/logger');
 const { FrameParser, FrameSizeError } = require('../utils/frameParser');
 const { getTunnelLimits } = require('../utils/tunnelLimits');
@@ -128,16 +128,30 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
             }
           }
           tunnelId = messageTunnelId;
-          METRICS.registerTunnel(tunnelId);
+          METRICS.registerTunnel(tunnelId, { remoteAddress: clientIp });
           tunnelRegistered = true;
         }
 
         try {
-          await handleParsedMessage(ws, messageTunnelId, uuid, type, payload, tunnelIdHeaderName, portKey);
+          await handleParsedMessage(
+            ws,
+            messageTunnelId,
+            uuid,
+            type,
+            payload,
+            tunnelIdHeaderName,
+            portKey
+          );
         } catch (err) {
           logger.error(
             `[handleParsedMessage] Unhandled error for uuid=${uuid}, type=${type}: ${err.message}`
           );
+        }
+
+        if (type === MESSAGE_TYPE_CONFIG && tunnelRegistered && tunnelId) {
+          const tunnelVersion =
+            state[portKey]?.websocketTunnels?.[tunnelId]?.agentVersion || 'unknown';
+          METRICS.setTunnelMeta(tunnelId, { agentVersion: tunnelVersion });
         }
       }
     });

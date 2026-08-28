@@ -51,6 +51,7 @@ async function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHe
         ws,
         tcpConnections: {},
         httpConnections: {},
+        agentVersion: config.agentVersion || 'unknown',
       };
 
       const portKey = String(TUNNEL_ENTRY_PORT);

@@ -46,7 +46,7 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 - **Duplicate cleanup destroys existing tunnel (KNOWN-012)**: `cleanup()` now checks WebSocket ownership before tearing down TCP connections — rejected duplicates no longer destroy the existing tunnel's resources
 
 ### 🔧 Improvements
-- **Test suite**: 28 suites, 201 tests (was 20 suites, 122 tests)
+- **Test suite**: 28 suites, 206 tests (was 20 suites, 122 tests)
 - **STABILITY_CONTRACT.md**: All RWT-KNOWN issues resolved, all RWT-* invariants covered by regression tests
 
 ---
@@ -522,6 +522,109 @@ You should see the "Hello, World!" response from your local web server.
 ```
 Hello, World!
 ```
+
+---
+
+## 📊 Metrics
+
+The library exports a lightweight in-process metrics registry for monitoring tunnel health.
+
+### Usage
+
+```javascript
+const { getMetrics } = require('@remotelinker/reverse-ws-tunnel/utils');
+
+// Get a snapshot of current metrics
+const snapshot = getMetrics().snapshot();
+console.log(snapshot);
+```
+
+### Periodic Logging
+
+```javascript
+const { getMetrics } = require('@remotelinker/reverse-ws-tunnel/utils');
+
+// Log metrics every 30 seconds at debug level
+getMetrics().startSummaryTimer(30000);
+
+// Stop the timer
+getMetrics().stopSummaryTimer();
+```
+
+### Snapshot Output
+
+```jsonc
+{
+  "label": "tunnel",
+  "ts": "2026-08-27T14:30:00.000Z",
+  "active_tunnels": 2,                    // number of connected tunnels
+  "active_tunnel_ids": [                  // list of connected tunnel IDs
+    "1cf2755f-c151-4281-b3f0-55c399035f87",
+    "a3b4c5d6-e7f8-9012-3456-789012345678"
+  ],
+  "active_streams": 5,                    // number of active TCP streams
+  "bytes_in_total": 12345678,             // total bytes received from tunnels (WS → TCP)
+  "bytes_out_total": 98765432,            // total bytes sent to tunnels (TCP → WS)
+  "backpressure_events_total": 3,         // number of backpressure pauses
+  "buffered_bytes_total": 1024000,        // total bytes currently buffered
+  "buffered_bytes_per_tunnel": {          // buffered bytes per tunnel
+    "1cf2755f-...": 512000,
+    "a3b4c5d6-...": 512000
+  },
+  "frame_too_large_total": 0,             // rejected oversized frames
+  "tunnel_disconnect_total": 12,          // total tunnel disconnects
+  "heartbeat_timeout_total": 0,           // heartbeat timeouts
+  "event_loop_lag_ms": {                  // event loop latency
+    "p50": 0.5,
+    "p99": 2.1
+  },
+  "tunnels_detail": {                     // per-tunnel metadata
+    "1cf2755f-c151-4281-b3f0-55c399035f87": {
+      "connectedAt": 1693132200000,       // Date.now() when tunnel connected
+      "remoteAddress": "192.168.1.10",    // client IP from WS upgrade request
+      "streamCount": 3,                   // number of active TCP streams
+      "bytesIn": 1234567,                 // bytes received from this tunnel
+      "bytesOut": 9876543                 // bytes sent to this tunnel
+    },
+    "a3b4c5d6-e7f8-9012-3456-789012345678": {
+      "connectedAt": 1693132260000,
+      "remoteAddress": "10.0.0.5",
+      "streamCount": 2,
+      "bytesIn": 567890,
+      "bytesOut": 4321098
+    }
+  }
+}
+```
+
+### Field Reference
+
+| Field | Description |
+|-------|-------------|
+| `active_tunnels` | Number of currently connected tunnels |
+| `active_tunnel_ids` | Array of connected tunnel ID strings |
+| `active_streams` | Number of active TCP streams across all tunnels |
+| `bytes_in_total` | Total bytes received from tunnels and written to TCP sockets |
+| `bytes_out_total` | Total bytes read from TCP sockets and sent to tunnels |
+| `backpressure_events_total` | Number of times a TCP producer was paused due to WS backpressure |
+| `buffered_bytes_total` | Total bytes currently queued across all streams |
+| `buffered_bytes_per_tunnel` | Buffered bytes breakdown by tunnel ID |
+| `frame_too_large_total` | Frames rejected for exceeding `RWT_MAX_FRAME_SIZE_BYTES` |
+| `tunnel_disconnect_total` | Total number of tunnel disconnects |
+| `heartbeat_timeout_total` | Heartbeat timeout events |
+| `event_loop_lag_ms.p50` | Median event loop lag in milliseconds |
+| `event_loop_lag_ms.p99` | 99th percentile event loop lag in milliseconds |
+| `tunnels_detail` | Per-tunnel metadata (see below) |
+
+#### Per-Tunnel Detail
+
+| Field | Description |
+|-------|-------------|
+| `connectedAt` | `Date.now()` when the tunnel was registered |
+| `remoteAddress` | Client IP address from the WebSocket upgrade request |
+| `streamCount` | Number of currently active TCP streams for this tunnel |
+| `bytesIn` | Total bytes received from this tunnel (WS → TCP direction) |
+| `bytesOut` | Total bytes sent to this tunnel (TCP → WS direction) |
 
 ---
 

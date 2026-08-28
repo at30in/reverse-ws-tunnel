@@ -1,5 +1,6 @@
 const { setLogLevel, getLogLevel, setLogContext, getLogContext, logger } = require('./logger.js');
 const { loadConfig } = require('./loadConfig.js');
+const { getMetrics } = require('./tunnelMetrics.js');
 
 module.exports = {
   setLogLevel,
@@ -8,4 +9,5 @@ module.exports = {
   getLogContext,
   logger,
   loadConfig,
+  getMetrics,
 };

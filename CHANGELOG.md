@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - **Incremental frame parser**: `FrameParser` replaces `Buffer.concat()` — O(n) memory, no reallocation
 - **Configurable limits via env vars**: `RWT_HIGH_WATERMARK`, `RWT_LOW_WATERMARK`, `RWT_MAX_FRAME_SIZE`, `RWT_MAX_BUFFER_PER_STREAM`, `RWT_MAX_BUFFER_PER_TUNNEL`, `RWT_MAX_BUFFER_PER_PROCESS`, `RWT_TCP_IDLE_TIMEOUT_MS`
 - **Per-tunnel metrics**: `TunnelMetrics` singleton with `snapshot()`, event loop lag, buffer accounting
+- **Per-tunnel monitoring (Level 2)**: `activeTunnels` is now a `Map<string, TunnelInfo>` exposing `connectedAt`, `remoteAddress`, `streamCount`, `bytesIn`, `bytesOut` per tunnel. `snapshot()` includes `active_tunnel_ids` and `tunnels_detail`. `addTraffic()` accepts optional `tunnelId` to update per-tunnel byte counters.
 - **Bidirectional CLOSE**: Server and client both send CLOSE on overflow or socket end
 - **Chunked TE re-framing**: Fixes `http-parser-js` de-chunking bug where headers were forwarded with `Transfer-Encoding: chunked` but body was already de-chunked
 - **stopWebSocketServer(port)**: Added new function to properly stop and cleanup the WebSocket server
@@ -45,7 +46,7 @@ All notable changes to this project will be documented in this file.
 - **ws.maxBufferedAmount disabled**: `applyWsBufferGuard()` is now a no-op — the ws library's built-in guard destroys sockets too aggressively for large transfers
 - **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
 - **State management**: Improved state cleanup to prevent stale entries after server restart
-- **Test suite**: 28 suites, 201 tests (was 16 suites, 105 tests)
+- **Test suite**: 28 suites, 206 tests (was 16 suites, 105 tests)
   - New: `configDataOrdering` (7), `tunnelClientHeartbeat` (9), `tcpServerCleanup` (8), `tcpServerLifecycle` (9), `tcpServerBodyCoalescer` (10), `backpressureSender` (20), `logger` (11), `proxyServer` (5+3), `harnessClose` (4), `duplicateTunnel` (7: RWT-WS-002 + RWT-KNOWN-012), `lifecycle` (9)
   - Integration: `volumes` (100MB, 10×8MB, starvation, slow reader, 60 streams), `resilience` (disconnect+reconnect, FIN propagation), `backpressure` (tiny limits, overflow)
 

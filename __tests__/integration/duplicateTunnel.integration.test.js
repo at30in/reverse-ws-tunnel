@@ -41,9 +41,18 @@ function createRawWs(url) {
   const ws = new WebSocket(url);
 
   const open = new Promise((resolve, reject) => {
-    const onOpen = () => { cleanup(); resolve(); };
-    const onClose = (code) => { cleanup(); reject(new Error(`ws closed before open: ${code}`)); };
-    const onError = (err) => { cleanup(); reject(err); };
+    const onOpen = () => {
+      cleanup();
+      resolve();
+    };
+    const onClose = code => {
+      cleanup();
+      reject(new Error(`ws closed before open: ${code}`));
+    };
+    const onError = err => {
+      cleanup();
+      reject(err);
+    };
     const cleanup = () => {
       ws.removeListener('open', onOpen);
       ws.removeListener('close', onClose);
@@ -115,7 +124,10 @@ describe('RWT-WS-002 duplicate tunnel ID rejection', () => {
 
   test('second connection with same tunnelId is closed with 1008; first stays OPEN', async () => {
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     // Connection 1 — establish tunnel
@@ -150,7 +162,10 @@ describe('RWT-WS-002 duplicate tunnel ID rejection', () => {
 
   test('second connection rejected does not replace first in state', async () => {
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     const { ws: ws1, open: open1 } = createRawWs(`ws://127.0.0.1:${wsPort}/tunnel`);
@@ -179,7 +194,10 @@ describe('RWT-WS-002 duplicate tunnel ID rejection', () => {
 
   test('tunnel state intact after duplicate rejection', async () => {
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     const { ws: ws1, open: open1 } = createRawWs(`ws://127.0.0.1:${wsPort}/tunnel`);
@@ -214,7 +232,10 @@ describe('RWT-WS-002 duplicate tunnel ID rejection', () => {
 
   test('connection closed before CONFIG does not corrupt state', async () => {
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     const { ws: ws1, open: open1 } = createRawWs(`ws://127.0.0.1:${wsPort}/tunnel`);
@@ -266,7 +287,10 @@ describe('RWT-KNOWN-012 duplicate cleanup must not destroy existing tunnel resou
     const tunnelId = `dup-known012-${uuidv4()}`;
 
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     // 1. Connect tunnel A and send CONFIG
@@ -317,7 +341,10 @@ describe('RWT-KNOWN-012 duplicate cleanup must not destroy existing tunnel resou
     const tunnelId = `dup-repeat-${uuidv4()}`;
 
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     // Connect tunnel A
@@ -333,7 +360,11 @@ describe('RWT-KNOWN-012 duplicate cleanup must not destroy existing tunnel resou
 
     // Send 3 duplicate connections in rapid succession
     for (let i = 0; i < 3; i++) {
-      const { ws: wsDup, open: openDup, close: closeDup } = createRawWs(`ws://127.0.0.1:${wsPort}/tunnel`);
+      const {
+        ws: wsDup,
+        open: openDup,
+        close: closeDup,
+      } = createRawWs(`ws://127.0.0.1:${wsPort}/tunnel`);
       const { code } = await Promise.race([
         closeDup,
         openDup.then(() => {
@@ -361,7 +392,10 @@ describe('RWT-KNOWN-012 duplicate cleanup must not destroy existing tunnel resou
     const tunnelId = `dup-owner-${uuidv4()}`;
 
     startWebSocketServer({
-      port: wsPort, host: '127.0.0.1', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id',
+      port: wsPort,
+      host: '127.0.0.1',
+      path: '/tunnel',
+      tunnelIdHeaderName: 'x-tunnel-id',
     });
 
     // Connect tunnel A

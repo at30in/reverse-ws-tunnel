@@ -75,7 +75,7 @@ function createStreamWriteQueue({ socket, tunnelId, uuid, limits, metrics, onOve
   /** @returns {boolean} true if accepted, false if rejected/closed */
   function enqueue(payload) {
     if (destroyed) return false;
-    if (metrics) metrics.addTraffic(payload.length, 0);
+    if (metrics) metrics.addTraffic(payload.length, 0, tunnelId);
 
     if (queuedBytes + payload.length > limits.maxBufferPerStreamBytes) {
       return overflow('stream', payload.length);

@@ -81,7 +81,7 @@ function createBackpressureSender({
     sentBytes += payload.length;
     lastProgressTs = Date.now();
     reportBuffered();
-    if (metrics) metrics.addTraffic(0, payload.length);
+    if (metrics) metrics.addTraffic(0, payload.length, tunnelId);
 
     // ws guarantees the callback runs exactly once, also on error/close.
     ws.send(message, err => {

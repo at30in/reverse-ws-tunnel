@@ -1,2 +1,2 @@
 import cjsModule from './index.js';
-export const { setLogLevel, getLogLevel, loadConfig } = cjsModule;
+export const { setLogLevel, getLogLevel, loadConfig, getMetrics } = cjsModule;

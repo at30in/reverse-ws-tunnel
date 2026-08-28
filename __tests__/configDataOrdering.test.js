@@ -36,6 +36,7 @@ jest.mock('../utils/tunnelMetrics', () => ({
     unregisterTunnel: jest.fn(),
     registerStream: jest.fn(),
     unregisterStream: jest.fn(),
+    setTunnelMeta: jest.fn(),
   }),
 }));
 
@@ -67,7 +68,9 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
 
   afterEach(async () => {
     for (const s of mockTcpServers) {
-      try { s.close(); } catch (_) {}
+      try {
+        s.close();
+      } catch (_) {}
     }
     delete state[WS_PORT];
     delete state['9999'];
@@ -102,8 +105,13 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       // Process CONFIG
       const configPayload = JSON.stringify({ TUNNEL_ENTRY_PORT: tcpSrv.address().port });
       await handleParsedMessage(
-        mockWs, TUNNEL_ID, UUID, MESSAGE_TYPE_CONFIG,
-        Buffer.from(configPayload), 'x-tunnel-id', WS_PORT
+        mockWs,
+        TUNNEL_ID,
+        UUID,
+        MESSAGE_TYPE_CONFIG,
+        Buffer.from(configPayload),
+        'x-tunnel-id',
+        WS_PORT
       );
 
       // CONFIG completed — tunnel registered
@@ -111,8 +119,13 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
 
       // Now process DATA — should find the tunnel (no TCP conn yet → graceful log)
       await handleParsedMessage(
-        mockWs, TUNNEL_ID, UUID, MESSAGE_TYPE_DATA,
-        Buffer.from('test-data'), 'x-tunnel-id', WS_PORT
+        mockWs,
+        TUNNEL_ID,
+        UUID,
+        MESSAGE_TYPE_DATA,
+        Buffer.from('test-data'),
+        'x-tunnel-id',
+        WS_PORT
       );
 
       const noConnLog = logger.debug.mock.calls.find(c =>
@@ -134,7 +147,10 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       state.tcpServers[tcpPort] = tcpSrv;
 
       const frames = [
-        { type: MESSAGE_TYPE_CONFIG, payload: JSON.stringify({ TUNNEL_ENTRY_PORT: tcpSrv.address().port }) },
+        {
+          type: MESSAGE_TYPE_CONFIG,
+          payload: JSON.stringify({ TUNNEL_ENTRY_PORT: tcpSrv.address().port }),
+        },
         { type: MESSAGE_TYPE_DATA, payload: 'data1' },
         { type: MESSAGE_TYPE_DATA, payload: 'data2' },
       ];
@@ -142,17 +158,18 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       const processingOrder = [];
       for (const frame of frames) {
         await handleParsedMessage(
-          mockWs, TUNNEL_ID, UUID, frame.type,
-          Buffer.from(frame.payload), 'x-tunnel-id', WS_PORT
+          mockWs,
+          TUNNEL_ID,
+          UUID,
+          frame.type,
+          Buffer.from(frame.payload),
+          'x-tunnel-id',
+          WS_PORT
         );
         processingOrder.push(frame.type);
       }
 
-      expect(processingOrder).toEqual([
-        MESSAGE_TYPE_CONFIG,
-        MESSAGE_TYPE_DATA,
-        MESSAGE_TYPE_DATA,
-      ]);
+      expect(processingOrder).toEqual([MESSAGE_TYPE_CONFIG, MESSAGE_TYPE_DATA, MESSAGE_TYPE_DATA]);
 
       expect(state[WS_PORT]?.websocketTunnels?.[TUNNEL_ID]).toBeDefined();
     });
@@ -166,8 +183,13 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
 
       await expect(
         handleParsedMessage(
-          mockWs, TUNNEL_ID, UUID, MESSAGE_TYPE_CONFIG,
-          Buffer.from(configPayload), 'x-tunnel-id', WS_PORT
+          mockWs,
+          TUNNEL_ID,
+          UUID,
+          MESSAGE_TYPE_CONFIG,
+          Buffer.from(configPayload),
+          'x-tunnel-id',
+          WS_PORT
         )
       ).resolves.toBeUndefined();
 
@@ -183,8 +205,13 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       const mockWs = makeMockWs();
 
       await handleParsedMessage(
-        mockWs, TUNNEL_ID, UUID, MESSAGE_TYPE_DATA,
-        Buffer.from('orphan-data'), 'x-tunnel-id', WS_PORT
+        mockWs,
+        TUNNEL_ID,
+        UUID,
+        MESSAGE_TYPE_DATA,
+        Buffer.from('orphan-data'),
+        'x-tunnel-id',
+        WS_PORT
       );
 
       const noConnLog = logger.debug.mock.calls.find(c =>
@@ -199,8 +226,13 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
 
       const pingPayload = JSON.stringify({ type: 'ping', seq: 1 });
       await handleParsedMessage(
-        mockWs, TUNNEL_ID, UUID, MESSAGE_TYPE_APP_PING,
-        Buffer.from(pingPayload), 'x-tunnel-id', WS_PORT
+        mockWs,
+        TUNNEL_ID,
+        UUID,
+        MESSAGE_TYPE_APP_PING,
+        Buffer.from(pingPayload),
+        'x-tunnel-id',
+        WS_PORT
       );
 
       expect(mockWs.send).toHaveBeenCalledTimes(1);
@@ -213,13 +245,16 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       // CONFIG with missing TUNNEL_ENTRY_PORT triggers error path
       const configPayload = JSON.stringify({});
       await handleParsedMessage(
-        mockWs, TUNNEL_ID, UUID, MESSAGE_TYPE_CONFIG,
-        Buffer.from(configPayload), 'x-tunnel-id', WS_PORT
+        mockWs,
+        TUNNEL_ID,
+        UUID,
+        MESSAGE_TYPE_CONFIG,
+        Buffer.from(configPayload),
+        'x-tunnel-id',
+        WS_PORT
       );
 
-      const warnLog = logger.warn.mock.calls.find(c =>
-        c[0]?.includes('TUNNEL_ENTRY_PORT')
-      );
+      const warnLog = logger.warn.mock.calls.find(c => c[0]?.includes('TUNNEL_ENTRY_PORT'));
       expect(warnLog).toBeTruthy();
     });
   });
@@ -243,7 +278,9 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       // CONFIG with missing TUNNEL_ENTRY_PORT → triggers error path, no TCP server needed
       const configPayload = JSON.stringify({});
       const configFrame = Buffer.concat([
-        Buffer.alloc(4), tId, u,
+        Buffer.alloc(4),
+        tId,
+        u,
         Buffer.from([MESSAGE_TYPE_CONFIG]),
         Buffer.from(configPayload),
       ]);
@@ -252,7 +289,9 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       // DATA immediately after
       const dataPayload = 'test-data';
       const dataFrame = Buffer.concat([
-        Buffer.alloc(4), tId, u,
+        Buffer.alloc(4),
+        tId,
+        u,
         Buffer.from([MESSAGE_TYPE_DATA]),
         Buffer.from(dataPayload),
       ]);
@@ -264,21 +303,15 @@ describe('RWT-KNOWN-010 CONFIG/DATA ordering', () => {
       await new Promise(r => setTimeout(r, 100));
 
       // CONFIG should have been processed (warn about missing port)
-      const warnLog = logger.warn.mock.calls.find(c =>
-        c[0]?.includes('TUNNEL_ENTRY_PORT')
-      );
+      const warnLog = logger.warn.mock.calls.find(c => c[0]?.includes('TUNNEL_ENTRY_PORT'));
       expect(warnLog).toBeTruthy();
 
       // DATA should have been processed (debug about no connection)
-      const debugLog = logger.debug.mock.calls.find(c =>
-        c[0]?.includes('No TCP connection found')
-      );
+      const debugLog = logger.debug.mock.calls.find(c => c[0]?.includes('No TCP connection found'));
       expect(debugLog).toBeTruthy();
 
       // No unhandled errors
-      const unhandled = logger.error.mock.calls.filter(c =>
-        c[0]?.includes('Unhandled error')
-      );
+      const unhandled = logger.error.mock.calls.filter(c => c[0]?.includes('Unhandled error'));
       expect(unhandled).toHaveLength(0);
 
       client.close();

@@ -1,7 +1,9 @@
 require('dotenv').config();
 const { startWebSocketServer, setLogContext } = require('@remotelinker/reverse-ws-tunnel/server');
-const { loadConfig } = require('@remotelinker/reverse-ws-tunnel/utils');
+const { loadConfig, getMetrics } = require('@remotelinker/reverse-ws-tunnel/utils');
 // const { setLogLevel, getLogLevel } = require('@remotelinker/reverse-ws-tunnel/utils');
+
+const config = loadConfig();
 
 // setLogLevel('error');
 setLogContext('SERVER');
@@ -12,3 +14,6 @@ const host = process.env.HOST;
 const path = process.env.PATH_URL;
 
 startWebSocketServer({ port: wsPort, host, path, tunnelIdHeaderName });
+
+// Log metrics every 30 seconds at debug level
+getMetrics().startSummaryTimer(30000);

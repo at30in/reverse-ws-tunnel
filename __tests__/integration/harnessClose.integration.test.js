@@ -113,8 +113,13 @@ describe('WS error/termination cleans registry (RWT-KNOWN-005)', () => {
       try {
         const r = await new Promise((resolve, reject) => {
           const req = http.request(
-            { host: '127.0.0.1', port: entryPort, path: '/echo', method: 'GET',
-              headers: { 'x-tunnel-id': tunnelId } },
+            {
+              host: '127.0.0.1',
+              port: entryPort,
+              path: '/echo',
+              method: 'GET',
+              headers: { 'x-tunnel-id': tunnelId },
+            },
             res => {
               const chunks = [];
               res.on('data', c => chunks.push(c));
@@ -196,8 +201,13 @@ describe('WS error/termination cleans registry (RWT-KNOWN-005)', () => {
       try {
         const r = await new Promise((resolve, reject) => {
           const req = http.request(
-            { host: '127.0.0.1', port: entryPort, path: '/echo', method: 'GET',
-              headers: { 'x-tunnel-id': tunnelId } },
+            {
+              host: '127.0.0.1',
+              port: entryPort,
+              path: '/echo',
+              method: 'GET',
+              headers: { 'x-tunnel-id': tunnelId },
+            },
             res => {
               const chunks = [];
               res.on('data', c => chunks.push(c));
@@ -217,8 +227,13 @@ describe('WS error/termination cleans registry (RWT-KNOWN-005)', () => {
     const postBody = crypto.randomBytes(1024);
     const postResult = new Promise((resolve, reject) => {
       const req = http.request(
-        { host: '127.0.0.1', port: entryPort, path: '/echo', method: 'POST',
-          headers: { 'x-tunnel-id': tunnelId, 'content-length': String(postBody.length) } },
+        {
+          host: '127.0.0.1',
+          port: entryPort,
+          path: '/echo',
+          method: 'POST',
+          headers: { 'x-tunnel-id': tunnelId, 'content-length': String(postBody.length) },
+        },
         res => {
           const chunks = [];
           res.on('data', c => chunks.push(c));
@@ -255,6 +270,8 @@ describe('WS error/termination cleans registry (RWT-KNOWN-005)', () => {
     await new Promise(r => target.close(r));
 
     // Consume the post result if it arrived (may have been interrupted).
-    try { await postResult; } catch (_) {}
+    try {
+      await postResult;
+    } catch (_) {}
   });
 });

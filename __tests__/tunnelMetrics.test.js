@@ -25,6 +25,88 @@ describe('tunnelMetrics', () => {
     expect(snap.active_streams).toBe(0);
   });
 
+  it('stores connectedAt and remoteAddress per tunnel', () => {
+    const before = Date.now();
+    metrics.registerTunnel('ta', { remoteAddress: '10.0.0.1' });
+    const after = Date.now();
+
+    const snap = metrics.snapshot();
+    expect(snap.active_tunnel_ids).toEqual(['ta']);
+    expect(snap.tunnels_detail.ta.remoteAddress).toBe('10.0.0.1');
+    expect(snap.tunnels_detail.ta.connectedAt).toBeGreaterThanOrEqual(before);
+    expect(snap.tunnels_detail.ta.connectedAt).toBeLessThanOrEqual(after);
+    expect(snap.tunnels_detail.ta.streamCount).toBe(0);
+    expect(snap.tunnels_detail.ta.bytesIn).toBe(0);
+    expect(snap.tunnels_detail.ta.bytesOut).toBe(0);
+    expect(snap.tunnels_detail.ta.agentVersion).toBe('unknown');
+  });
+
+  it('setTunnelMeta updates agentVersion', () => {
+    metrics.registerTunnel('tm');
+    expect(metrics.snapshot().tunnels_detail.tm.agentVersion).toBe('unknown');
+
+    metrics.setTunnelMeta('tm', { agentVersion: '1.1.0' });
+    expect(metrics.snapshot().tunnels_detail.tm.agentVersion).toBe('1.1.0');
+
+    // No-op for non-existent tunnel
+    metrics.setTunnelMeta('nonexistent', { agentVersion: '2.0.0' });
+  });
+
+  it('registerStream increments streamCount, unregisterStream decrements', () => {
+    metrics.registerTunnel('ts');
+    metrics.registerStream('ts', 'u1');
+    metrics.registerStream('ts', 'u2');
+    expect(metrics.snapshot().tunnels_detail.ts.streamCount).toBe(2);
+
+    metrics.unregisterStream('ts', 'u1');
+    expect(metrics.snapshot().tunnels_detail.ts.streamCount).toBe(1);
+
+    metrics.unregisterStream('ts', 'u2');
+    expect(metrics.snapshot().tunnels_detail.ts.streamCount).toBe(0);
+  });
+
+  it('addTraffic with tunnelId updates per-tunnel bytes', () => {
+    metrics.registerTunnel('tt');
+    metrics.addTraffic(100, 200, 'tt');
+    metrics.addTraffic(50, 0, 'tt');
+
+    const detail = metrics.snapshot().tunnels_detail.tt;
+    expect(detail.bytesIn).toBe(150);
+    expect(detail.bytesOut).toBe(200);
+
+    // Global counters still accumulate
+    const snap = metrics.snapshot();
+    expect(snap.bytes_in_total).toBe(150);
+    expect(snap.bytes_out_total).toBe(200);
+  });
+
+  it('unregisterTunnel fully cleans up Map entry', () => {
+    metrics.registerTunnel('td', { remoteAddress: '127.0.0.1' });
+    metrics.registerStream('td', 'u1');
+    metrics.addTraffic(10, 20, 'td');
+    expect(metrics.snapshot().active_tunnels).toBe(1);
+
+    metrics.unregisterTunnel('td');
+    const snap = metrics.snapshot();
+    expect(snap.active_tunnels).toBe(0);
+    expect(snap.active_tunnel_ids).toEqual([]);
+    expect(snap.tunnels_detail).toEqual({});
+    expect(snap.active_streams).toBe(0);
+  });
+
+  it('reset clears the tunnels Map', () => {
+    metrics.registerTunnel('r1');
+    metrics.registerTunnel('r2');
+    metrics.addTraffic(10, 20, 'r1');
+    metrics.reset();
+
+    const snap = metrics.snapshot();
+    expect(snap.active_tunnels).toBe(0);
+    expect(snap.active_tunnel_ids).toEqual([]);
+    expect(snap.tunnels_detail).toEqual({});
+    expect(snap.bytes_in_total).toBe(0);
+  });
+
   it('tracks buffered bytes total and per tunnel, deleting zero entries', () => {
     metrics.setBuffered('u1:ws', 't1', 1000);
     metrics.setBuffered('u1:tcp', 't1', 500);

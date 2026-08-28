@@ -23,7 +23,13 @@ jest.mock('net', () => ({
 }));
 jest.mock('../package.json', () => ({ version: '1.0.0' }));
 jest.mock('../utils/logger', () => ({
-  logger: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn(), trace: jest.fn() },
+  logger: {
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    trace: jest.fn(),
+  },
   setLogContext: jest.fn(),
 }));
 jest.mock('../utils/tunnelLimits', () => ({
@@ -53,7 +59,9 @@ function createMockWs() {
   emitter.OPEN = WebSocket.OPEN;
   emitter.CLOSED = 3;
   emitter.CLOSE = 3;
-  emitter.terminate = jest.fn(() => { emitter.readyState = 3; });
+  emitter.terminate = jest.fn(() => {
+    emitter.readyState = 3;
+  });
   return emitter;
 }
 
@@ -81,11 +89,15 @@ function getCloseHandler(ws) {
 }
 
 describe('RWT-KNOWN-009 pong listener accumulation', () => {
-  beforeEach(() => { jest.useFakeTimers(); });
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
   afterEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();
-    try { require('../client/tunnelClient').resetClients(); } catch (_) {}
+    try {
+      require('../client/tunnelClient').resetClients();
+    } catch (_) {}
   });
 
   it('normal pong: clears timeout, does not terminate', () => {
@@ -167,11 +179,15 @@ describe('RWT-KNOWN-009 pong listener accumulation', () => {
 });
 
 describe('RWT-KNOWN-009 reconnect behavior', () => {
-  beforeEach(() => { jest.useFakeTimers(); });
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
   afterEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();
-    try { require('../client/tunnelClient').resetClients(); } catch (_) {}
+    try {
+      require('../client/tunnelClient').resetClients();
+    } catch (_) {}
   });
 
   it('reconnect fires once per close', () => {
