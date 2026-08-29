@@ -65,6 +65,26 @@ describe('tunnelMetrics', () => {
     expect(metrics.snapshot().tunnels_detail.ts.streamCount).toBe(0);
   });
 
+  it('peakStreamCount tracks maximum concurrent streams', () => {
+    metrics.registerTunnel('pk');
+    expect(metrics.snapshot().tunnels_detail.pk.peakStreamCount).toBe(0);
+
+    metrics.registerStream('pk', 'u1');
+    metrics.registerStream('pk', 'u2');
+    metrics.registerStream('pk', 'u3');
+    expect(metrics.snapshot().tunnels_detail.pk.peakStreamCount).toBe(3);
+
+    // Unregister one — peak stays at 3
+    metrics.unregisterStream('pk', 'u1');
+    expect(metrics.snapshot().tunnels_detail.pk.streamCount).toBe(2);
+    expect(metrics.snapshot().tunnels_detail.pk.peakStreamCount).toBe(3);
+
+    // Register two more — peak grows to 4
+    metrics.registerStream('pk', 'u4');
+    metrics.registerStream('pk', 'u5');
+    expect(metrics.snapshot().tunnels_detail.pk.peakStreamCount).toBe(4);
+  });
+
   it('addTraffic with tunnelId updates per-tunnel bytes', () => {
     metrics.registerTunnel('tt');
     metrics.addTraffic(100, 200, 'tt');

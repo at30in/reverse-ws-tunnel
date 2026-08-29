@@ -14,6 +14,7 @@ const { logger } = require('./logger');
  * @property {number} connectedAt - Date.now() when the tunnel was registered
  * @property {string} remoteAddress - Client IP from the WS upgrade request
  * @property {number} streamCount - Number of active TCP streams
+ * @property {number} peakStreamCount - Maximum concurrent TCP streams seen
  * @property {number} bytesIn - Total bytes received from the tunnel (WS → TCP)
  * @property {number} bytesOut - Total bytes sent to the tunnel (TCP → WS)
  * @property {string} agentVersion - Client library version from CONFIG message
@@ -48,6 +49,7 @@ class TunnelMetrics {
       connectedAt: Date.now(),
       remoteAddress,
       streamCount: 0,
+      peakStreamCount: 0,
       bytesIn: 0,
       bytesOut: 0,
       agentVersion: 'unknown',
@@ -74,7 +76,12 @@ class TunnelMetrics {
     const id = String(tunnelId);
     this.activeStreams.add(`${id}/${String(uuid)}`);
     const info = this.activeTunnels.get(id);
-    if (info) info.streamCount++;
+    if (info) {
+      info.streamCount++;
+      if (info.streamCount > info.peakStreamCount) {
+        info.peakStreamCount = info.streamCount;
+      }
+    }
   }
 
   unregisterStream(tunnelId, uuid) {
