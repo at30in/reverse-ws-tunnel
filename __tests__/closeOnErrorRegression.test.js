@@ -191,31 +191,6 @@ describe('CLOSE frame on TCP error/timeout (v1.0.11 regression)', () => {
     expect(closeUuid).toBe(uuid);
   });
 
-  it('should send CLOSE when client TCP socket emits timeout', () => {
-    const { ws, socket } = setup();
-
-    const uuid = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-    const dataMsg = buildDataMessage(
-      'test-tunnel',
-      uuid,
-      'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n'
-    );
-    const messageHandler = ws.listeners('message')[0];
-    messageHandler(dataMsg);
-
-    const net = require('net');
-    expect(net.createConnection).toHaveBeenCalled();
-
-    // Simulate TCP idle timeout
-    socket.emit('timeout');
-
-    const closes = findCloseFrames(ws);
-    expect(closes.length).toBeGreaterThanOrEqual(1);
-
-    const closeUuid = extractUuid(closes[0]);
-    expect(closeUuid).toBe(uuid);
-  });
-
   it('should still clean up locally after sending CLOSE on error', () => {
     const { ws, socket } = setup();
 
@@ -231,29 +206,6 @@ describe('CLOSE frame on TCP error/timeout (v1.0.11 regression)', () => {
     expect(socket.destroy).toHaveBeenCalled();
 
     // A subsequent DATA for same uuid must create a new TCP connection
-    const net = require('net');
-    const callCountBefore = net.createConnection.mock.calls.length;
-
-    const dataMsg2 = buildDataMessage('test-tunnel', uuid, 'next request');
-    messageHandler(dataMsg2);
-
-    expect(net.createConnection.mock.calls.length).toBe(callCountBefore + 1);
-  });
-
-  it('should still clean up locally after sending CLOSE on timeout', () => {
-    const { ws, socket } = setup();
-
-    const uuid = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
-    const dataMsg = buildDataMessage('test-tunnel', uuid, 'payload');
-    const messageHandler = ws.listeners('message')[0];
-    messageHandler(dataMsg);
-
-    // Simulate timeout
-    socket.emit('timeout');
-
-    expect(socket.destroy).toHaveBeenCalled();
-
-    // Recovery: new DATA creates new connection
     const net = require('net');
     const callCountBefore = net.createConnection.mock.calls.length;
 

@@ -347,7 +347,6 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
   logger.debug(`Creating TCP connection to ${hostname}:${targetPort} for uuid=${uuid}`);
 
   const client = net.createConnection(targetPort, hostname);
-  client.setTimeout(LIMITS.tcpIdleTimeoutMs);
   const stats = { openedAt: Date.now(), bytesIn: 0, bytesOut: 0 };
 
   // target -> WS direction: pause this socket while the WS link is behind.
@@ -418,15 +417,6 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
       sender.send('CLOSE');
     } catch (_) {}
     cleanupLocal('error');
-    client.destroy();
-  });
-
-  client.on('timeout', () => {
-    logger.warn(`TCP idle timeout for uuid=${uuid} after ${LIMITS.tcpIdleTimeoutMs}ms`);
-    try {
-      sender.send('CLOSE');
-    } catch (_) {}
-    cleanupLocal('idle_timeout');
     client.destroy();
   });
 

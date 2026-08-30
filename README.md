@@ -44,11 +44,11 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 - **pong listener accumulation**: Removes old pong listener before registering new heartbeat cycle
 - **CONFIG/DATA frame ordering**: WebSocket message handler is now async — CONFIG completes before DATA is processed
 - **Duplicate cleanup destroys existing tunnel (KNOWN-012)**: `cleanup()` now checks WebSocket ownership before tearing down TCP connections — rejected duplicates no longer destroy the existing tunnel's resources
-- **TCP idle timeout (KNOWN-013)**: Client and server TCP sockets now have idle timeouts (`tcpIdleTimeoutMs`, default 60s). Prevents "tunnel alive but not operational" state when target becomes half-open.
+- **TCP idle timeout removed (KNOWN-013)**: `socket.setTimeout()` removed from both client-side target sockets and server-side entry sockets. Timeouts caused false-positive destruction of legitimate slow-responding services (e.g. SAP Business One). Dead connection detection now relies on TCP error/close events, WS heartbeat, and stream health checks.
 - **Stream health monitoring (KNOWN-014)**: Client heartbeat force-destroys TCP streams stalled longer than the idle timeout with an empty WebSocket buffer.
 
 ### 🔧 Improvements
-- **Test suite**: 32 suites, 221 tests (was 20 suites, 122 tests)
+- **Test suite**: 32 suites, 219 tests (was 20 suites, 122 tests)
 - **STABILITY_CONTRACT.md**: All RWT-KNOWN issues resolved, all RWT-* invariants covered by regression tests
 
 ---
@@ -336,7 +336,7 @@ The tunnel supports configurable buffer limits for flow control between TCP and 
 | `RWT_MAX_BUFFER_PER_STREAM` | Max bytes queued per stream (WS→TCP) | `67108864` (64MB) | `134217728` |
 | `RWT_MAX_BUFFER_PER_TUNNEL` | Max bytes queued across all streams of a tunnel | `268435456` (256MB) | `536870912` |
 | `RWT_MAX_BUFFER_PER_PROCESS` | Process-wide buffer ceiling (warn-only) | `536870912` (512MB) | `1073741824` |
-| `RWT_TCP_IDLE_TIMEOUT_MS` | Idle timeout for per-request TCP clients | `60000` (60s) | `120000` |
+| `RWT_TCP_IDLE_TIMEOUT_MS` | Stale threshold for stream health check (paused sender + empty WS buffer) | `60000` (60s) | `120000` |
 
 **Defaults support transfers up to 64MB without configuration.** For larger files, increase `RWT_MAX_BUFFER_PER_STREAM` and `RWT_MAX_BUFFER_PER_TUNNEL`.
 
