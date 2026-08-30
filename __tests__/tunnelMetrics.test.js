@@ -160,6 +160,9 @@ describe('tunnelMetrics', () => {
     metrics.countFrameTooLarge();
     metrics.countDisconnect();
     metrics.countHeartbeatTimeout();
+    metrics.countStreamStallCleanup();
+    metrics.countStreamStallCleanup();
+    metrics.countStreamStallCleanup();
 
     const snap = metrics.snapshot();
     expect(snap.bytes_in_total).toBe(15);
@@ -168,6 +171,7 @@ describe('tunnelMetrics', () => {
     expect(snap.frame_too_large_total).toBe(1);
     expect(snap.tunnel_disconnect_total).toBe(1);
     expect(snap.heartbeat_timeout_total).toBe(1);
+    expect(snap.stream_stall_cleanup_total).toBe(3);
   });
 
   it('exposes event loop lag percentiles in ms', async () => {

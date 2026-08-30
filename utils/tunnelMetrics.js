@@ -32,6 +32,7 @@ class TunnelMetrics {
     this.frameTooLargeTotal = 0;
     this.tunnelDisconnectTotal = 0;
     this.heartbeatTimeoutTotal = 0;
+    this.streamStallCleanupTotal = 0;
 
     // bufferKey -> { tunnelId, bytes }; entries removed at zero so the
     // map cannot grow unboundedly across short-lived streams.
@@ -164,6 +165,10 @@ class TunnelMetrics {
     this.heartbeatTimeoutTotal++;
   }
 
+  countStreamStallCleanup() {
+    this.streamStallCleanupTotal++;
+  }
+
   _loopLagPercentiles() {
     const m = this._loopMonitor;
     if (!m || m.count === 0) return { p50: 0, p99: 0 };
@@ -193,6 +198,7 @@ class TunnelMetrics {
       frame_too_large_total: this.frameTooLargeTotal,
       tunnel_disconnect_total: this.tunnelDisconnectTotal,
       heartbeat_timeout_total: this.heartbeatTimeoutTotal,
+      stream_stall_cleanup_total: this.streamStallCleanupTotal,
       event_loop_lag_ms: this._loopLagPercentiles(),
       tunnels_detail,
     };
@@ -229,6 +235,7 @@ class TunnelMetrics {
     this.frameTooLargeTotal = 0;
     this.tunnelDisconnectTotal = 0;
     this.heartbeatTimeoutTotal = 0;
+    this.streamStallCleanupTotal = 0;
   }
 }
 

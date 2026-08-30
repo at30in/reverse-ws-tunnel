@@ -305,6 +305,32 @@ function heartBeat(ws) {
       for (const uuid of Object.keys(clients)) {
         clients[uuid]?.sender?.reconcile();
       }
+
+      // Stream health check: detect streams that are paused with an empty
+      // ws buffer and no progress for longer than staleMs. These streams
+      // are truly stalled (e.g. target half-open) and must be destroyed.
+      const staleMs = LIMITS.tcpIdleTimeoutMs || 60000;
+      for (const uuid of Object.keys(clients)) {
+        const conn = clients[uuid];
+        if (!conn?.sender || conn.sender.isDestroyed()) continue;
+        if (!conn.sender.isPaused()) continue;
+        if (ws.bufferedAmount > 0) continue;
+        const lastProgress = conn.sender.getLastProgressTs();
+        if (Date.now() - lastProgress >= staleMs) {
+          logger.warn(
+            `[stream_stall] uuid=${uuid} paused for ${Date.now() - lastProgress}ms ` +
+              `with empty ws buffer — destroying stream`
+          );
+          METRICS.countStreamStallCleanup();
+          delete clients[uuid];
+          conn.queue?.destroy();
+          conn.sender?.destroy();
+          try {
+            conn.socket.destroy();
+          } catch (_) {}
+          METRICS.unregisterStream(tunnelId, uuid);
+        }
+      }
     }
   }, PING_INTERVAL);
 
@@ -321,6 +347,7 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
   logger.debug(`Creating TCP connection to ${hostname}:${targetPort} for uuid=${uuid}`);
 
   const client = net.createConnection(targetPort, hostname);
+  client.setTimeout(LIMITS.tcpIdleTimeoutMs);
   const stats = { openedAt: Date.now(), bytesIn: 0, bytesOut: 0 };
 
   // target -> WS direction: pause this socket while the WS link is behind.
@@ -388,6 +415,12 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
   client.on('error', err => {
     logger.error(`TCP error for uuid=${uuid}:`, err);
     cleanupLocal('error');
+    client.destroy();
+  });
+
+  client.on('timeout', () => {
+    logger.warn(`TCP idle timeout for uuid=${uuid} after ${LIMITS.tcpIdleTimeoutMs}ms`);
+    cleanupLocal('idle_timeout');
     client.destroy();
   });
 

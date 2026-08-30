@@ -44,9 +44,11 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 - **pong listener accumulation**: Removes old pong listener before registering new heartbeat cycle
 - **CONFIG/DATA frame ordering**: WebSocket message handler is now async — CONFIG completes before DATA is processed
 - **Duplicate cleanup destroys existing tunnel (KNOWN-012)**: `cleanup()` now checks WebSocket ownership before tearing down TCP connections — rejected duplicates no longer destroy the existing tunnel's resources
+- **TCP idle timeout (KNOWN-013)**: Client and server TCP sockets now have idle timeouts (`tcpIdleTimeoutMs`, default 60s). Prevents "tunnel alive but not operational" state when target becomes half-open.
+- **Stream health monitoring (KNOWN-014)**: Client heartbeat force-destroys TCP streams stalled longer than the idle timeout with an empty WebSocket buffer.
 
 ### 🔧 Improvements
-- **Test suite**: 28 suites, 206 tests (was 20 suites, 122 tests)
+- **Test suite**: 30 suites, 216 tests (was 20 suites, 122 tests)
 - **STABILITY_CONTRACT.md**: All RWT-KNOWN issues resolved, all RWT-* invariants covered by regression tests
 
 ---

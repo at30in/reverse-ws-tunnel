@@ -33,6 +33,7 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
       const uuid = uuidv4();
       let currentTunnelId = null;
       let isWebSocket = false;
+      socket.setTimeout(LIMITS.tcpIdleTimeoutMs);
       // When the incoming request uses Transfer-Encoding: chunked,
       // http-parser-js hands us the ALREADY-DECODED body. Since we forward
       // the original headers verbatim (still declaring chunked), we must
@@ -304,6 +305,15 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
       socket.on('error', err => {
         logger.error(`Socket error on tunnel [${currentTunnelId}], uuid [${uuid}]:`, err);
         cleanupConn('error');
+      });
+
+      socket.on('timeout', () => {
+        logger.warn(
+          `TCP idle timeout on entry socket tunnel [${currentTunnelId}] uuid [${uuid}] ` +
+            `after ${LIMITS.tcpIdleTimeoutMs}ms`
+        );
+        cleanupConn('idle_timeout');
+        socket.destroy();
       });
     }
   );

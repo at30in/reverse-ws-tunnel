@@ -52,6 +52,7 @@ describe('Client Message Handling', () => {
       write: jest.fn(),
       end: jest.fn(),
       destroy: jest.fn(),
+      setTimeout: jest.fn(),
     };
 
     WebSocket.mockReturnValue(mockWs);

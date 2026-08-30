@@ -80,6 +80,7 @@ describe('RWT-RES-001 / RWT-RES-002 lifecycle (real queue + sender)', () => {
       write: jest.fn(() => true),
       pause: jest.fn(),
       resume: jest.fn(),
+      setTimeout: jest.fn(),
       isPaused: jest.fn(() => false),
       destroyed: false,
       writableLength: 0,

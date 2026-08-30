@@ -27,6 +27,7 @@ describe('startTCPServer', () => {
       write: jest.fn(),
       pause: jest.fn(),
       resume: jest.fn(),
+      setTimeout: jest.fn(),
       isPaused: () => false,
       destroyed: false,
       address: () => ({ port: 3000 }),

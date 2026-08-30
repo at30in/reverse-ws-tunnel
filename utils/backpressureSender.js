@@ -151,6 +151,7 @@ function createBackpressureSender({
     getOutstanding: () => outstanding,
     isPaused: () => paused,
     isDestroyed: () => destroyed,
+    getLastProgressTs: () => lastProgressTs,
     stats: () => ({ sentMessages, sentBytes }),
     bufferKey,
   };

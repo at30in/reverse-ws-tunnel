@@ -780,6 +780,26 @@ These issues were identified during the repository audit on 2026-08-26. They are
 
 ---
 
+**RWT-KNOWN-013**: TCP sockets missing idle timeout — tunnel alive but not operational
+
+- **Severity**: High
+- **Component**: `client/tunnelClient.js`, `server/tcpServer.js`
+- **Description**: Client-side TCP sockets to the target (`net.createConnection`) and server-side entry sockets (`net.createServer`) do not call `socket.setTimeout()`. The `tcpIdleTimeoutMs` limit (60s) exists in `tunnelLimits.js` but is never applied. If the target service becomes半-open (TCP ACKs but no application data), the client TCP socket stays alive indefinitely. The `StreamWriteQueue` fills, the `BackpressureSender` pauses the TCP socket, and the connection sits in a paused state with no timeout to break it. The `reconcile()` mechanism only force-resumes when `ws.bufferedAmount === 0 && staleForMs >= 10s`, which does not trigger in a true deadlock (data queued but not flowing). Result: WebSocket is OPEN, heartbeats succeed, but data no longer flows — the classic "alive but not operational" state.
+- **Expected fix direction**: Apply `socket.setTimeout(LIMITS.tcpIdleTimeoutMs)` to both client-side target sockets and server-side entry sockets. Handle the `'timeout'` event to trigger cleanup and socket destruction.
+- **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-29). `createTcpClient()` in `client/tunnelClient.js` now calls `client.setTimeout(LIMITS.tcpIdleTimeoutMs)` and handles the `'timeout'` event with `cleanupLocal('idle_timeout')` + `client.destroy()`. `startTCPServer()` in `server/tcpServer.js` now calls `socket.setTimeout(LIMITS.tcpIdleTimeoutMs)` on entry sockets and handles the `'timeout'` event with `cleanupConn('idle_timeout')` + `socket.destroy()`. Additionally, the client-side heartbeat now includes a stream health check that force-destroys streams paused for longer than `staleMs` with an empty WebSocket buffer. New metric `stream_stall_cleanup_total` tracks forced stream cleanups. Regression tests: `tcpIdleTimeout.test.js` (5 tests), `stallRecovery.integration.test.js` (2 tests).
+
+---
+
+**RWT-KNOWN-014**: No application-level stream health monitoring
+
+- **Severity**: Medium
+- **Component**: `client/tunnelClient.js`
+- **Description**: The client health monitor (`startHealthMonitor`) only checks `lastPongTs` (WebSocket-level liveness). It does not monitor whether TCP streams are actually flowing. A paused TCP socket with a healthy WebSocket = "alive but not operational" from the application perspective.
+- **Expected fix direction**: Add stream health checking in the client heartbeat: detect streams where `sender.isPaused() && ws.bufferedAmount === 0 && staleForMs >= staleMs` and force-destroy them.
+- **Regression test required**: Yes.
+- **Status**: **RESOLVED** (2026-08-29). The client-side heartbeat now includes a stream health check after the reconcile loop. Streams that are paused with an empty WebSocket buffer and no progress for longer than `staleMs` are force-destroyed (queue destroyed, sender destroyed, socket destroyed, metrics unregistered). A `stream_stall_cleanup_total` metric counter tracks these events. Regression tests: `tcpIdleTimeout.test.js` "streamStallCleanup metric", `stallRecovery.integration.test.js` (2 tests).
+
 ## 17. Definition of Stable
 
 A release of `@remotelinker/reverse-ws-tunnel` is **not** considered stable if any of the following conditions hold:
@@ -812,4 +832,5 @@ A release of `@remotelinker/reverse-ws-tunnel` is **not** considered stable if a
 - **2026-08-26** — RWT-KNOWN-009 resolved. `heartBeat()` in `tunnelClient.js` now tracks `pongHandler` and `pongTimeout` references. `cleanupPong()` removes the pong listener and clears the timeout. Called before each new ping cycle, on pong arrival, on timeout, and on WS close. Maximum one pong listener active per cycle. Nine regression tests added to `tunnelClientHeartbeat.test.js`.
 - **2026-08-26** — RWT-KNOWN-010 resolved. The `ws.on('message', ...)` callback in `websocketServer.js` is now `async`. Each `handleParsedMessage()` call is `await`ed inside the frame loop, serializing CONFIG and DATA dispatch. Errors are caught by an outer `try/catch` preventing unhandled rejections. R3 race classification updated to "Eliminated". Seven regression tests added to `configDataOrdering.test.js`.
 - **2026-08-26** — RWT-KNOWN-012 resolved. `cleanup()` in `websocketServer.js` now checks WebSocket ownership (`registeredTunnel.ws === ws`) before tearing down TCP connections, unregistering metrics, or deleting tunnel state. Rejected duplicates only clear their heartbeat interval and terminate their socket. RWT-WS-002 no longer has a known violation. Regression tests: `duplicateTunnel.integration.test.js` (3 tests: duplicate rejection preserves state, repeated rejections do not destroy, owner cleanup still removes).
+- **2026-08-29** — RWT-KNOWN-013 and RWT-KNOWN-014 resolved. TCP sockets now have idle timeouts (`tcpIdleTimeoutMs`); client-side heartbeat includes stream health check that force-destroys stalled streams. New metric `stream_stall_cleanup_total`. Added `getLastProgressTs()` to `BackpressureSender`. Regression tests: `tcpIdleTimeout.test.js` (5 tests), `stallRecovery.integration.test.js` (2 tests).
 - **2026-08-26** — Initial stability contract created from repository audit. 17 core invariants defined. 11 known issues documented. Test pyramid and AI development rules established.

@@ -319,4 +319,22 @@ describe('RWT-KNOWN-004 destroy idempotency', () => {
     expect(sender.getOutstanding()).toBe(0);
     expect(sender.send(CHUNK)).toBeNull();
   });
+
+  it('getLastProgressTs returns timestamp of last send or callback', () => {
+    const ws = makeFakeWs();
+    const { sender } = makeSender(ws);
+
+    const beforeSend = Date.now();
+    sender.send(CHUNK);
+    const afterSend = Date.now();
+    const lastProgress = sender.getLastProgressTs();
+    expect(lastProgress).toBeGreaterThanOrEqual(beforeSend);
+    expect(lastProgress).toBeLessThanOrEqual(afterSend);
+
+    // After callback fires, lastProgressTs is updated
+    ws.flush();
+    const afterFlush = Date.now();
+    expect(sender.getLastProgressTs()).toBeGreaterThanOrEqual(afterSend);
+    expect(sender.getLastProgressTs()).toBeLessThanOrEqual(afterFlush);
+  });
 });

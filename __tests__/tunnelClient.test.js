@@ -54,6 +54,7 @@ describe('connectWebSocket', () => {
       write: jest.fn(),
       end: jest.fn(),
       destroy: jest.fn(),
+      setTimeout: jest.fn(),
     };
     net.createConnection.mockReturnValue(mockTcpSocket);
   });

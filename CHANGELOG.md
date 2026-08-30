@@ -40,21 +40,24 @@ All notable changes to this project will be documented in this file.
 - **pong listener accumulation (KNOWN-009)**: `heartBeat()` now tracks `pongHandler`/`pongTimeout` and calls `ws.removeListener('pong', ...)` before registering a new cycle — no more listener leak on reconnect
 - **CONFIG/DATA frame ordering (KNOWN-010)**: `ws.on('message', ...)` in websocketServer is now `async` and each `handleParsedMessage()` is `await`ed, serializing frame dispatch so CONFIG completes before DATA is processed
 - **Duplicate cleanup destroys existing tunnel resources (KNOWN-012)**: `cleanup()` now checks WebSocket ownership (`registeredTunnel.ws === ws`) before tearing down TCP connections, unregistering metrics, or deleting tunnel state. Rejected duplicates only clear their own heartbeat interval and terminate their socket.
+- **TCP idle timeout — tunnel alive but not operational (KNOWN-013)**: Client-side target sockets and server-side entry sockets now call `socket.setTimeout(tcpIdleTimeoutMs)`. Previously, half-open TCP connections (target ACKs but no application data) left sockets alive indefinitely, causing permanent stall. The `tcpIdleTimeoutMs` limit (60s) was defined but never applied.
+- **No stream health monitoring (KNOWN-014)**: Client-side heartbeat now includes a stream health check that force-destroys TCP streams paused for longer than `staleMs` with an empty WebSocket buffer. This detects and recovers from stalled streams that WebSocket-level heartbeat cannot see.
 
 ### 🔧 Improvements
 - **Default buffer limits raised**: `maxBufferPerStreamBytes` 8MB → 64MB, `maxBufferPerTunnelBytes` 32MB → 256MB — transfers up to 64MB work without configuration
 - **ws.maxBufferedAmount disabled**: `applyWsBufferGuard()` is now a no-op — the ws library's built-in guard destroys sockets too aggressively for large transfers
 - **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
 - **State management**: Improved state cleanup to prevent stale entries after server restart
-- **Test suite**: 28 suites, 206 tests (was 16 suites, 105 tests)
-  - New: `configDataOrdering` (7), `tunnelClientHeartbeat` (9), `tcpServerCleanup` (8), `tcpServerLifecycle` (9), `tcpServerBodyCoalescer` (10), `backpressureSender` (20), `logger` (11), `proxyServer` (5+3), `harnessClose` (4), `duplicateTunnel` (7: RWT-WS-002 + RWT-KNOWN-012), `lifecycle` (9)
+- **Diagnostics**: New `stream_stall_cleanup_total` metric counter tracks forced stream cleanups; `getLastProgressTs()` added to BackpressureSender
+- **Test suite**: 30 suites, 216 tests (was 28 suites, 206 tests)
+  - New: `tcpIdleTimeout` (5), `stallRecovery.integration` (2)
   - Integration: `volumes` (100MB, 10×8MB, starvation, slow reader, 60 streams), `resilience` (disconnect+reconnect, FIN propagation), `backpressure` (tiny limits, overflow)
 
 ### 📚 Documentation
 - Updated `docs/architecture.md`: added sections for FrameParser, backpressureSender, streamWriteQueue, tunnelLimits, tunnelMetrics, bidirectional CLOSE, RWT_* env vars
 - Updated `docs/state-management.md`: added sender/queue/stats to tcpConnections structure
 - Updated `README.md`: added backpressure configuration section with env var table
-- Updated `STABILITY_CONTRACT.md`: all RWT-KNOWN-001 through RWT-KNOWN-012 marked RESOLVED; R3/R4/R6 races eliminated
+- Updated `STABILITY_CONTRACT.md`: all RWT-KNOWN-001 through RWT-KNOWN-014 marked RESOLVED; R3/R4/R6 races eliminated
 
 ## [1.0.11] - 2026-05-03
 
