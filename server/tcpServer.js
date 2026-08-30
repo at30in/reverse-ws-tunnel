@@ -83,6 +83,14 @@ function startTCPServer(port, tunnelIdHeaderName, websocketPort) {
               } catch (_) {}
             }
           },
+          onSendError: err => {
+            logger.warn(
+              `[stream_send_error] tunnel=${currentTunnelId} uuid=${uuid} ` +
+                `err=${err.message} — cleaning up entry socket`
+            );
+            cleanupConn('ws_send_error');
+            if (!socket.destroyed) socket.destroy();
+          },
         });
 
         // WS -> TCP direction. Bounded FIFO preserving order; a stream

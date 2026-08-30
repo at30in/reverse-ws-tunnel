@@ -48,7 +48,7 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 - **Stream health monitoring (KNOWN-014)**: Client heartbeat force-destroys TCP streams stalled longer than the idle timeout with an empty WebSocket buffer.
 
 ### 🔧 Improvements
-- **Test suite**: 30 suites, 216 tests (was 20 suites, 122 tests)
+- **Test suite**: 32 suites, 221 tests (was 20 suites, 122 tests)
 - **STABILITY_CONTRACT.md**: All RWT-KNOWN issues resolved, all RWT-* invariants covered by regression tests
 
 ---

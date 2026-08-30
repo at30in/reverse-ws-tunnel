@@ -70,8 +70,34 @@ function startWebSocketServer({ port, host, path, tunnelIdHeaderName }) {
       // sender's outstanding bytes with real ws.bufferedAmount.
       const conns = state[portKey]?.websocketTunnels?.[tunnelId]?.tcpConnections;
       if (conns) {
-        for (const conn of Object.values(conns)) {
+        for (const [streamUuid, conn] of Object.entries(conns)) {
           conn.sender?.reconcile();
+
+          // Stream health check: detect streams that are paused with an
+          // empty ws buffer and no progress for longer than staleMs.
+          // These streams are truly stalled and must be destroyed.
+          if (!conn.sender || conn.sender.isDestroyed()) continue;
+          if (!conn.sender.isPaused()) continue;
+          if (ws.bufferedAmount > 0) continue;
+          const lastProgress = conn.sender.getLastProgressTs();
+          if (Date.now() - lastProgress >= LIMITS.tcpIdleTimeoutMs) {
+            logger.warn(
+              `[stream_stall] tunnel=${tunnelId} uuid=${streamUuid} ` +
+                `paused for ${Date.now() - lastProgress}ms with empty ws buffer ` +
+                `— destroying stream`
+            );
+            METRICS.countStreamStallCleanup();
+            try {
+              conn.sender.send('CLOSE');
+            } catch (_) {}
+            conn.queue?.destroy();
+            conn.sender?.destroy();
+            try {
+              conn.socket?.destroy();
+            } catch (_) {}
+            METRICS.unregisterStream(tunnelId, streamUuid);
+            delete conns[streamUuid];
+          }
         }
       }
     }, PING_INTERVAL);

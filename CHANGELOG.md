@@ -42,6 +42,9 @@ All notable changes to this project will be documented in this file.
 - **Duplicate cleanup destroys existing tunnel resources (KNOWN-012)**: `cleanup()` now checks WebSocket ownership (`registeredTunnel.ws === ws`) before tearing down TCP connections, unregistering metrics, or deleting tunnel state. Rejected duplicates only clear their own heartbeat interval and terminate their socket.
 - **TCP idle timeout — tunnel alive but not operational (KNOWN-013)**: Client-side target sockets and server-side entry sockets now call `socket.setTimeout(tcpIdleTimeoutMs)`. Previously, half-open TCP connections (target ACKs but no application data) left sockets alive indefinitely, causing permanent stall. The `tcpIdleTimeoutMs` limit (60s) was defined but never applied.
 - **No stream health monitoring (KNOWN-014)**: Client-side heartbeat now includes a stream health check that force-destroys TCP streams paused for longer than `staleMs` with an empty WebSocket buffer. This detects and recovers from stalled streams that WebSocket-level heartbeat cannot see.
+- **CLOSE frame not sent on TCP error/timeout**: Client `on('error')` and `on('timeout')` handlers now send a CLOSE frame to the server before cleanup. Previously, when the target TCP socket got ECONNRESET or idle timeout, the server entry socket hung for up to 60s (v1.1.0) or indefinitely (v1.0.11) because the server was never notified the stream was dead.
+- **Server-side onSendError cleanup (KNOWN-013)**: `ensureConn()` in `server/tcpServer.js` now passes an `onSendError` callback to `createBackpressureSender`. When `ws.send()` fails (e.g. ECONNRESET on the WS link), the entry socket is destroyed immediately instead of the error being swallowed.
+- **Server-side stream health check (KNOWN-013)**: The server heartbeat in `server/websocketServer.js` now includes a stream health check mirroring the client-side check. Stalled senders (paused + empty WS buffer + no progress for `tcpIdleTimeoutMs`) are force-destroyed with CLOSE frame, preventing indefinite hang.
 
 ### 🔧 Improvements
 - **Default buffer limits raised**: `maxBufferPerStreamBytes` 8MB → 64MB, `maxBufferPerTunnelBytes` 32MB → 256MB — transfers up to 64MB work without configuration
@@ -49,8 +52,8 @@ All notable changes to this project will be documented in this file.
 - **Graceful shutdown**: Server now properly releases all resources (ports, memory, intervals) on shutdown
 - **State management**: Improved state cleanup to prevent stale entries after server restart
 - **Diagnostics**: New `stream_stall_cleanup_total` metric counter tracks forced stream cleanups; `getLastProgressTs()` added to BackpressureSender
-- **Test suite**: 30 suites, 216 tests (was 28 suites, 206 tests)
-  - New: `tcpIdleTimeout` (5), `stallRecovery.integration` (2)
+- **Test suite**: 32 suites, 221 tests (was 28 suites, 206 tests)
+  - New: `tcpIdleTimeout` (5), `stallRecovery.integration` (2), `closeOnErrorRegression` (4), `serverBackpressureGaps` (3)
   - Integration: `volumes` (100MB, 10×8MB, starvation, slow reader, 60 streams), `resilience` (disconnect+reconnect, FIN propagation), `backpressure` (tiny limits, overflow)
 
 ### 📚 Documentation

@@ -414,12 +414,18 @@ function createTcpClient(targetUrl, targetPort, ws, tunnelId, uuid) {
 
   client.on('error', err => {
     logger.error(`TCP error for uuid=${uuid}:`, err);
+    try {
+      sender.send('CLOSE');
+    } catch (_) {}
     cleanupLocal('error');
     client.destroy();
   });
 
   client.on('timeout', () => {
     logger.warn(`TCP idle timeout for uuid=${uuid} after ${LIMITS.tcpIdleTimeoutMs}ms`);
+    try {
+      sender.send('CLOSE');
+    } catch (_) {}
     cleanupLocal('idle_timeout');
     client.destroy();
   });
