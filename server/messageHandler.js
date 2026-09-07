@@ -4,11 +4,15 @@ const {
   MESSAGE_TYPE_DATA,
   MESSAGE_TYPE_APP_PING,
   MESSAGE_TYPE_APP_PONG,
+  MESSAGE_TYPE_CONFIG_RESPONSE,
+  MESSAGE_TYPE_COMMAND,
 } = require('./constants');
+const { version: serverVersion } = require('../package.json');
 const { ensureTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
 const { buildMessageBuffer } = require('../client/utils');
 const WebSocket = require('ws');
+const { v4: uuidv4 } = require('uuid');
 
 /**
  * Handles a parsed WebSocket message.
@@ -110,6 +114,24 @@ async function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHe
       }
 
       logger.info(`Tunnel [${tunnelId}] established successfully`);
+
+      const responsePayload = JSON.stringify({ serverVersion });
+      const responseMsg = buildMessageBuffer(
+        tunnelId,
+        uuid,
+        MESSAGE_TYPE_CONFIG_RESPONSE,
+        responsePayload
+      );
+
+      if (ws.readyState !== WebSocket.OPEN) {
+        logger.debug(
+          `CONFIG_RESPONSE dropped: ws.readyState=${ws.readyState} for tunnel ${tunnelId}`
+        );
+        return;
+      }
+
+      ws.send(responseMsg);
+      logger.debug(`CONFIG_RESPONSE sent: serverVersion=${serverVersion} for tunnel ${tunnelId}`);
     } catch (error) {
       logger.error(
         `Failed to process MESSAGE_TYPE_CONFIG for tunnelId=${tunnelId}: ${error.message}`
@@ -183,4 +205,30 @@ async function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHe
   }
 }
 
-module.exports = { handleParsedMessage };
+/**
+ * Sends a command to a connected tunnel agent.
+ * @param {number|string} wsPort - The WebSocket server port.
+ * @param {string} tunnelId - The tunnel identifier.
+ * @param {string} command - The command name.
+ * @param {object} args - Optional command arguments.
+ * @returns {boolean} true if sent, false if tunnel not found or not connected.
+ */
+function sendCommand(wsPort, tunnelId, command, args = {}) {
+  const portKey = String(wsPort);
+  const tunnel = state[portKey]?.websocketTunnels?.[tunnelId];
+
+  if (!tunnel?.ws || tunnel.ws.readyState !== WebSocket.OPEN) {
+    logger.debug(`sendCommand: tunnel ${tunnelId} not connected on port ${wsPort}`);
+    return false;
+  }
+
+  const uuid = uuidv4();
+  const payload = JSON.stringify({ command, args });
+  const msg = buildMessageBuffer(tunnelId, uuid, MESSAGE_TYPE_COMMAND, payload);
+
+  tunnel.ws.send(msg);
+  logger.debug(`Command sent: ${command} to tunnel ${tunnelId}`);
+  return true;
+}
+
+module.exports = { handleParsedMessage, sendCommand };

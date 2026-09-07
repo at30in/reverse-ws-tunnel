@@ -24,6 +24,10 @@ client.on('disconnected', () => {
   console.log('Client disconnected from tunnel');
 });
 
+client.on('serverVersion', (version: string) => {
+  console.log(`Server version: ${version}`);
+});
+
 client.on('error', (error: Error) => {
   console.error('Client error:', error.message);
 });

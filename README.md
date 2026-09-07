@@ -30,6 +30,21 @@ Reverse WebSocket Tunnel is a library that enables you to expose local services 
 
 ---
 
+## ✨ v1.2.0 - Server-to-Client Commands
+
+### ✨ New Features
+- **Server-to-client command messaging**: Server can send fire-and-forget commands to connected tunnel agents via `MESSAGE_TYPE_COMMAND` (0x06). Client emits `command` event with `{command, args}` payload.
+- **HTTP REST API for commands**: `createHttpApi(wsPort, apiPort)` starts an HTTP server exposing `POST /api/tunnel/command` endpoint for remote command delivery.
+- **`sendCommand(wsPort, tunnelId, command, args)`**: Exported function to send commands programmatically from server code.
+- **Client events centralized**: New `client/events.js` module with `CLIENT_EVENTS` constants.
+- **Server version in CONFIG response**: Server sends `MESSAGE_TYPE_CONFIG_RESPONSE` (0x05) with `serverVersion` after processing CONFIG. Client emits `serverVersion` event.
+
+### 🔧 Improvements
+- **Test suite**: 32 suites, 224 tests (was 219)
+- **Examples**: Updated server and client examples with command handling
+
+---
+
 ## ✨ v1.1.0 - Stability & Reliability
 
 ### 🐛 Bug Fixes
@@ -170,6 +185,14 @@ client.on('connected', () => {
 
 client.on('disconnected', () => {
   console.log('Disconnected from tunnel');
+});
+
+client.on('command', ({ command, args }) => {
+  console.log(`Received command: ${command}`, args);
+});
+
+client.on('serverVersion', (version) => {
+  console.log(`Server version: ${version}`);
 });
 
 // Close connection
@@ -627,6 +650,92 @@ getMetrics().stopSummaryTimer();
 | `streamCount` | Number of currently active TCP streams for this tunnel |
 | `bytesIn` | Total bytes received from this tunnel (WS → TCP direction) |
 | `bytesOut` | Total bytes sent to this tunnel (TCP → WS direction) |
+
+---
+
+## 🔔 Server-to-Client Commands
+
+The server can send fire-and-forget commands to connected tunnel agents. Commands are delivered via the WebSocket tunnel and emitted as events on the client.
+
+There are two ways to send commands:
+
+1. **JavaScript API** — call `sendCommand()` programmatically from your server code
+2. **HTTP REST API** — send commands via HTTP POST (requires starting the HTTP API server)
+
+---
+
+### Option 1: JavaScript API (`sendCommand`)
+
+Call `sendCommand()` directly from your Node.js server code:
+
+```javascript
+const { startWebSocketServer, sendCommand } = require('@remotelinker/reverse-ws-tunnel/server');
+
+startWebSocketServer({ port: 443, host: '0.0.0.0', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id' });
+
+// Send a kill command to a specific tunnel
+const sent = sendCommand(443, '1cf2755f-c151-4281-b3f0-55c399035f87', 'kill', { signal: 'SIGTERM' });
+console.log(sent); // true if tunnel was found and command sent
+```
+
+---
+
+### Option 2: HTTP REST API
+
+#### Starting the HTTP API Server
+
+The HTTP API is a separate server that exposes an HTTP endpoint for sending commands. Start it alongside the WebSocket server:
+
+```javascript
+const { startWebSocketServer } = require('@remotelinker/reverse-ws-tunnel/server');
+const { createHttpApi } = require('@remotelinker/reverse-ws-tunnel/server/httpApi');
+
+// Start WebSocket tunnel server on port 443
+startWebSocketServer({ port: 443, host: '0.0.0.0', path: '/tunnel', tunnelIdHeaderName: 'x-tunnel-id' });
+
+// Start HTTP API server on port 3001 (commands are routed to WS server on port 443)
+createHttpApi(443, 3001);
+```
+
+#### Sending a Command via HTTP
+
+```bash
+curl -X POST http://localhost:3001/api/tunnel/command \
+  -H "Content-Type: application/json" \
+  -d '{"tunnelId":"1cf2755f-c151-4281-b3f0-55c399035f87","command":"kill","args":{"signal":"SIGTERM"}}'
+```
+
+**Response:**
+
+- `200 OK` — `{"success":true}` if the tunnel was found and command sent
+- `404 Not Found` — `{"error":"Tunnel not found or not connected"}`
+- `400 Bad Request` — `{"error":"Missing tunnelId or command"}`
+
+---
+
+### Client Side — Listening for Commands
+
+Regardless of how the command was sent (JS API or HTTP), the client handles it the same way:
+
+```javascript
+const { startClient } = require('@remotelinker/reverse-ws-tunnel/client');
+
+const client = startClient({
+  tunnelId: '1cf2755f-c151-4281-b3f0-55c399035f87',
+  wsUrl: 'wss://example.com/tunnel',
+  targetUrl: 'http://localhost:3000',
+  tunnelEntryPort: 4443,
+});
+
+client.on('command', ({ command, args }) => {
+  console.log(`Received command: ${command}`, args);
+
+  if (command === 'kill') {
+    console.log(`Exiting with signal ${args.signal || 'SIGTERM'}`);
+    process.exit(0);
+  }
+});
+```
 
 ---
 

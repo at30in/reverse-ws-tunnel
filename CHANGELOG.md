@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-09-07
+
+### ✨ New Features
+- **Server-to-client command messaging**: Server can now send fire-and-forget commands to connected tunnel agents via `MESSAGE_TYPE_COMMAND` (0x06). Client emits `command` event with `{command, args}` payload.
+- **HTTP REST API for commands**: `createHttpApi(wsPort, apiPort)` starts an HTTP server exposing `POST /api/tunnel/command` endpoint for remote command delivery.
+- **`sendCommand(wsPort, tunnelId, command, args)`**: Exported function to send commands programmatically from server code.
+- **Client events centralized**: New `client/events.js` module with `CLIENT_EVENTS` constants (`CONNECTED`, `DISCONNECTED`, `SERVER_VERSION`, `COMMAND`, `ERROR`).
+- **Server version in CONFIG response**: Server now sends `MESSAGE_TYPE_CONFIG_RESPONSE` (0x05) with `serverVersion` after processing CONFIG. Client emits `serverVersion` event.
+
+### 🔧 Improvements
+- **TEST suite**: 32 suites, 224 tests (was 222)
+- **Server example**: `examples/server/server-example.js` now starts HTTP API and demonstrates `sendCommand()` with kill after 15s
+- **Client example**: `examples/client/client-example.js` now handles `command` and `serverVersion` events
+
 ## [1.1.0] - 2026-08-26
 
 ### ✨ New Features
@@ -252,6 +266,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+[1.2.0]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.11...v1.1.0
 [1.0.11]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/remoteLinker/reverse-ws-tunnel/compare/v1.0.9...v1.0.10

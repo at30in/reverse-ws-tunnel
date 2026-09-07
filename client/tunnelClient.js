@@ -9,6 +9,7 @@ const { getTunnelLimits } = require('../utils/tunnelLimits');
 const { getMetrics } = require('../utils/tunnelMetrics');
 const { createBackpressureSender, applyWsBufferGuard } = require('../utils/backpressureSender');
 const { createStreamWriteQueue } = require('../utils/streamWriteQueue');
+const { CLIENT_EVENTS } = require('./events');
 const packageJson = require('../package.json');
 
 // Resolved once per process; RWT_* env overrides still apply.
@@ -19,6 +20,8 @@ const MESSAGE_TYPE_CONFIG = 0x01;
 const MESSAGE_TYPE_DATA = 0x02;
 const MESSAGE_TYPE_APP_PING = 0x03;
 const MESSAGE_TYPE_APP_PONG = 0x04;
+const MESSAGE_TYPE_CONFIG_RESPONSE = 0x05;
+const MESSAGE_TYPE_COMMAND = 0x06;
 const clients = {};
 const PING_INTERVAL = 30 * 1000; //30s
 const PONG_WAIT = 5 * 1000; //5s
@@ -107,7 +110,7 @@ function connectWebSocket(config) {
       // Reset reconnect attempt on successful connection
       reconnectAttempt = 0;
 
-      eventEmitter.emit('connected');
+      eventEmitter.emit(CLIENT_EVENTS.CONNECTED);
       ({ pingInterval, cleanupPong } = heartBeat(ws));
 
       // Avviare heartbeat applicativo
@@ -219,13 +222,31 @@ function connectWebSocket(config) {
             logger.error(`Invalid app pong format: ${err.message}`);
           }
           continue;
+        } else if (type === MESSAGE_TYPE_CONFIG_RESPONSE) {
+          try {
+            const data = JSON.parse(payload.toString());
+            eventEmitter.emit(CLIENT_EVENTS.SERVER_VERSION, data.serverVersion);
+            logger.debug(`Server version received: ${data.serverVersion}`);
+          } catch (err) {
+            logger.error(`Invalid config response format: ${err.message}`);
+          }
+          continue;
+        } else if (type === MESSAGE_TYPE_COMMAND) {
+          try {
+            const data = JSON.parse(payload.toString());
+            eventEmitter.emit(CLIENT_EVENTS.COMMAND, data);
+            logger.debug(`Command received: ${data.command}`);
+          } catch (err) {
+            logger.error(`Invalid command format: ${err.message}`);
+          }
+          continue;
         }
       }
     });
 
     ws.on('close', () => {
       logger.warn('WebSocket connection closed. Cleaning up clients.');
-      eventEmitter.emit('disconnected');
+      eventEmitter.emit(CLIENT_EVENTS.DISCONNECTED);
       clearInterval(pingInterval);
       clearInterval(appPingInterval);
       clearInterval(healthMonitor);

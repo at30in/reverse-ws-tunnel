@@ -23,6 +23,19 @@ client.on('disconnected', () => {
   console.log('Client disconnected from tunnel');
 });
 
+client.on('serverVersion', (version) => {
+  console.log(`Server version: ${version}`);
+});
+
+client.on('command', ({ command, args }) => {
+  console.log(`[CLIENT] Received command: ${command}`, args);
+
+  if (command === 'kill') {
+    console.log(`[CLIENT] Kill received! Exiting with signal ${args.signal || 'SIGTERM'}. Goodbye!`);
+    process.exit(0);
+  }
+});
+
 // Example of closing the connection
 // setTimeout(() => {
 //   console.log('Closing client...');
