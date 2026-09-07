@@ -23,6 +23,10 @@ client.on('disconnected', () => {
   console.log('Client disconnected from tunnel');
 });
 
+client.on('serverVersion', (version) => {
+  console.log(`Server version: ${version}`);
+});
+
 // Example of closing the connection
 // setTimeout(() => {
 //   console.log('Closing client...');
