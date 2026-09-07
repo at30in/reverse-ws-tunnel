@@ -21,6 +21,7 @@ const MESSAGE_TYPE_DATA = 0x02;
 const MESSAGE_TYPE_APP_PING = 0x03;
 const MESSAGE_TYPE_APP_PONG = 0x04;
 const MESSAGE_TYPE_CONFIG_RESPONSE = 0x05;
+const MESSAGE_TYPE_COMMAND = 0x06;
 const clients = {};
 const PING_INTERVAL = 30 * 1000; //30s
 const PONG_WAIT = 5 * 1000; //5s
@@ -228,6 +229,15 @@ function connectWebSocket(config) {
             logger.debug(`Server version received: ${data.serverVersion}`);
           } catch (err) {
             logger.error(`Invalid config response format: ${err.message}`);
+          }
+          continue;
+        } else if (type === MESSAGE_TYPE_COMMAND) {
+          try {
+            const data = JSON.parse(payload.toString());
+            eventEmitter.emit(CLIENT_EVENTS.COMMAND, data);
+            logger.debug(`Command received: ${data.command}`);
+          } catch (err) {
+            logger.error(`Invalid command format: ${err.message}`);
           }
           continue;
         }

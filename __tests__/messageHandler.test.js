@@ -1,4 +1,4 @@
-const { handleParsedMessage } = require('../server/messageHandler');
+const { handleParsedMessage, sendCommand } = require('../server/messageHandler');
 const { buildMessageBuffer } = require('../client/utils');
 const {
   MESSAGE_TYPE_CONFIG,
@@ -6,6 +6,7 @@ const {
   MESSAGE_TYPE_APP_PING,
   MESSAGE_TYPE_APP_PONG,
   MESSAGE_TYPE_CONFIG_RESPONSE,
+  MESSAGE_TYPE_COMMAND,
 } = require('../server/constants');
 const state = require('../server/state');
 const { logger } = require('../utils/logger');
@@ -220,6 +221,66 @@ describe('handleParsedMessage', () => {
         port
       );
 
+      expect(mockWs.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendCommand', () => {
+    const tunnelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const wsPort = 9999;
+
+    beforeEach(() => {
+      delete state[wsPort];
+    });
+
+    it('sends command to connected tunnel', () => {
+      const mockWs = {
+        readyState: 1, // WebSocket.OPEN
+        send: jest.fn(),
+      };
+
+      state[wsPort] = {
+        websocketTunnels: {
+          [tunnelId]: { ws: mockWs },
+        },
+      };
+
+      const result = sendCommand(wsPort, tunnelId, 'kill', { signal: 'SIGTERM' });
+
+      expect(result).toBe(true);
+      expect(mockWs.send).toHaveBeenCalledTimes(1);
+
+      const sentBuf = mockWs.send.mock.calls[0][0];
+      expect(Buffer.isBuffer(sentBuf)).toBe(true);
+
+      const typeByte = sentBuf.readUInt8(4 + 36 + 36);
+      expect(typeByte).toBe(MESSAGE_TYPE_COMMAND);
+
+      const payloadBuf = sentBuf.slice(4 + 36 + 36 + 1);
+      const data = JSON.parse(payloadBuf.toString());
+      expect(data.command).toBe('kill');
+      expect(data.args.signal).toBe('SIGTERM');
+    });
+
+    it('returns false when tunnel not found', () => {
+      const result = sendCommand(wsPort, 'nonexistent', 'kill');
+      expect(result).toBe(false);
+    });
+
+    it('returns false when tunnel ws is not OPEN', () => {
+      const mockWs = {
+        readyState: 2, // WebSocket.CLOSING
+        send: jest.fn(),
+      };
+
+      state[wsPort] = {
+        websocketTunnels: {
+          [tunnelId]: { ws: mockWs },
+        },
+      };
+
+      const result = sendCommand(wsPort, tunnelId, 'kill');
+      expect(result).toBe(false);
       expect(mockWs.send).not.toHaveBeenCalled();
     });
   });

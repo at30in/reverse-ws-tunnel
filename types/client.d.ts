@@ -7,6 +7,7 @@ export interface TunnelClient extends EventEmitter {
   on(event: 'connected', listener: () => void): this;
   on(event: 'disconnected', listener: () => void): this;
   on(event: 'serverVersion', listener: (version: string) => void): this;
+  on(event: 'command', listener: (data: { command: string; args: Record<string, unknown> }) => void): this;
   on(event: 'error', listener: (error: Error) => void): this;
 }
 
