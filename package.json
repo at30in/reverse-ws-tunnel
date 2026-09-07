@@ -1,6 +1,6 @@
 {
   "name": "@remotelinker/reverse-ws-tunnel",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A Node.js library for creating secure reverse tunnels over WebSocket connections",
   "main": "index.cjs",
   "types": "types/index.d.ts",
@@ -53,6 +53,10 @@
     "./server": {
       "import": "./server/index.mjs",
       "require": "./server/index.js"
+    },
+    "./server/httpApi": {
+      "import": "./server/httpApi.mjs",
+      "require": "./server/httpApi.js"
     },
     "./client": {
       "import": "./client/index.mjs",
