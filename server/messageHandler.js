@@ -4,7 +4,9 @@ const {
   MESSAGE_TYPE_DATA,
   MESSAGE_TYPE_APP_PING,
   MESSAGE_TYPE_APP_PONG,
+  MESSAGE_TYPE_CONFIG_RESPONSE,
 } = require('./constants');
+const { version: serverVersion } = require('../package.json');
 const { ensureTCPServer } = require('./tcpServer');
 const { logger } = require('../utils/logger');
 const { buildMessageBuffer } = require('../client/utils');
@@ -110,6 +112,24 @@ async function handleParsedMessage(ws, tunnelId, uuid, type, payload, tunnelIdHe
       }
 
       logger.info(`Tunnel [${tunnelId}] established successfully`);
+
+      const responsePayload = JSON.stringify({ serverVersion });
+      const responseMsg = buildMessageBuffer(
+        tunnelId,
+        uuid,
+        MESSAGE_TYPE_CONFIG_RESPONSE,
+        responsePayload
+      );
+
+      if (ws.readyState !== WebSocket.OPEN) {
+        logger.debug(
+          `CONFIG_RESPONSE dropped: ws.readyState=${ws.readyState} for tunnel ${tunnelId}`
+        );
+        return;
+      }
+
+      ws.send(responseMsg);
+      logger.debug(`CONFIG_RESPONSE sent: serverVersion=${serverVersion} for tunnel ${tunnelId}`);
     } catch (error) {
       logger.error(
         `Failed to process MESSAGE_TYPE_CONFIG for tunnelId=${tunnelId}: ${error.message}`

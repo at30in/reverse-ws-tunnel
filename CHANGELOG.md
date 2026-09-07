@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### ✨ New Features
+- **Server version in CONFIG response**: Server now sends `MESSAGE_TYPE_CONFIG_RESPONSE` (0x05) with `serverVersion` after processing CONFIG. Client emits `serverVersion` event.
+
 ## [1.1.0] - 2026-08-26
 
 ### ✨ New Features
