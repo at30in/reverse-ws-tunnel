@@ -1,2 +1,4 @@
 import cjsModule from './index.js';
-export const { startWebSocketServer, setLogContext } = cjsModule;
+import httpApiModule from './httpApi.js';
+export const { startWebSocketServer, sendCommand, setLogContext } = cjsModule;
+export const { createHttpApi } = httpApiModule;
